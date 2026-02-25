@@ -263,6 +263,10 @@ router.post('/create', async (req: Request, res: Response) => {
       atendimentoData.remarcado_id = remarcadoId;
     }
 
+    console.log(
+      `[Reposição Create] Payload: ${JSON.stringify(atendimentoData, null, 2)}`,
+    );
+
     const result = await seufisioClient.post(
       "/api/atendimento",
       atendimentoData,
@@ -283,7 +287,12 @@ router.post('/create', async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('[Reposição Create] Error:', error?.response?.data || error.message);
+    console.error("[Reposição Create] Error status:", error?.response?.status);
+    console.error(
+      "[Reposição Create] Error data:",
+      JSON.stringify(error?.response?.data),
+    );
+    console.error("[Reposição Create] Error message:", error.message);
 
     if (error?.response?.data) {
       res.status(error.response.status || 500).json({
@@ -293,6 +302,44 @@ router.post('/create', async (req: Request, res: Response) => {
     } else {
       res.status(500).json({ error: 'Failed to create reposition', details: error.message });
     }
+  }
+});
+
+/**
+ * GET /api/reposicao/debug/:clientId/:saleId
+ * Debug endpoint: shows raw data from SeuFisio for a sale
+ */
+router.get('/debug/:clientId/:saleId', async (req: Request, res: Response) => {
+  try {
+    const { clientId, saleId } = req.params;
+    const saleIdNum = parseInt(saleId as string);
+
+    // Get sales
+    const salesData = await seufisioClient.get(`/api/cliente/${clientId}/listar-vendas`, {
+      tab: 'ativas',
+      page: 1,
+      per_page: 100,
+    });
+
+    const sale = (salesData.data || []).find((s: any) => s.id === saleIdNum);
+
+    // Get atendimentos to repor
+    let atendimentosRepor: any = null;
+    try {
+      atendimentosRepor = await seufisioClient.get(
+        `/api/pacote/${saleIdNum}/get-atendimentos-repor`
+      );
+    } catch (err: any) {
+      atendimentosRepor = { error: err?.response?.data || err.message };
+    }
+
+    res.json({
+      sale: sale || { error: `Sale ${saleId} not found` },
+      atendimentosRepor,
+      rawSalesCount: salesData.data?.length || 0,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error?.response?.data || error.message });
   }
 });
 
