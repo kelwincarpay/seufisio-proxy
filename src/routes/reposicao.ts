@@ -207,34 +207,50 @@ router.post('/create', async (req: Request, res: Response) => {
       return;
     }
 
-    // Step 5: Get atendimentos to repor (for remarcado_id) — optional
+    // Step 5: Get atendimentos to repor (for remarcado_id) — REQUIRED
     console.log(
-      `[Reposição Create] Getting atendimentos to repor for pacote ${pacoteId}`,
+      `[Reposição Create] Getting atendimentos to repor for pacoteId ${pacoteId} (cicloId: ${cicloId}, sale.id: ${sale.id})`,
     );
     let remarcadoId: number | null = null;
 
-    try {
-      const atendimentosRepor: any[] = await seufisioClient.get(
-        `/api/pacote/${pacoteId}/get-atendimentos-repor`,
-      );
+    // Try pacoteId first (which is cicloId for servico_recorrente)
+    const idsToTry = cicloId ? [cicloId, sale.id] : [sale.id];
 
-      console.log(
-        `[Reposição Create] Atendimentos to repor found: ${JSON.stringify(atendimentosRepor)}`,
-      );
-
-      if (atendimentosRepor && atendimentosRepor.length > 0) {
-        remarcadoId = atendimentosRepor[0].id;
-        console.log(`[Reposição Create] Using remarcado_id: ${remarcadoId}`);
-      } else {
+    for (const tryId of idsToTry) {
+      try {
         console.log(
-          "[Reposição Create] No atendimentos to repor found, proceeding without remarcado_id",
+          `[Reposição Create] Trying get-atendimentos-repor with id: ${tryId}`,
+        );
+        const atendimentosRepor: any[] = await seufisioClient.get(
+          `/api/pacote/${tryId}/get-atendimentos-repor`,
+        );
+
+        console.log(
+          `[Reposição Create] Response for id ${tryId}: ${JSON.stringify(atendimentosRepor)}`,
+        );
+
+        if (atendimentosRepor && atendimentosRepor.length > 0) {
+          remarcadoId = atendimentosRepor[0].id;
+          console.log(
+            `[Reposição Create] Found remarcado_id: ${remarcadoId} using id: ${tryId}`,
+          );
+          break;
+        }
+      } catch (err: any) {
+        console.log(
+          `[Reposição Create] Failed with id ${tryId}:`,
+          err?.response?.data || err?.message,
         );
       }
-    } catch (err: any) {
-      console.log(
-        "[Reposição Create] Failed to get atendimentos to repor, proceeding without remarcado_id:",
-        err?.message,
-      );
+    }
+
+    if (!remarcadoId) {
+      res.status(404).json({
+        error:
+          "Could not find the original attendance for reposition (remarcado_id). The sale reports pending repositions but no original attendance was found.",
+        debug: { saleId: sale.id, cicloId, idsTriedForRepor: idsToTry },
+      });
+      return;
     }
 
     // Step 6: Calculate end time (50 min sessions)
@@ -255,6 +271,7 @@ router.post('/create', async (req: Request, res: Response) => {
       sala_id: 1,
       tipo_atendimento_id: tipoAtendimentoId,
       status_id: 1,
+      remarcado_id: remarcadoId,
       pacote_id: pacoteId,
       is_pacote: pacoteId,
       aula_experimental: false,
@@ -262,16 +279,6 @@ router.post('/create', async (req: Request, res: Response) => {
       hora_final_atendimento: finalHour,
       atualizar_valor_cobranca_ciclo: false,
     };
-
-    // For servico_recorrente, also include ciclo_id
-    if (cicloId) {
-      atendimentoData.ciclo_id = cicloId;
-    }
-
-    // Only include remarcado_id if we found one
-    if (remarcadoId) {
-      atendimentoData.remarcado_id = remarcadoId;
-    }
 
     console.log(
       `[Reposição Create] Payload: ${JSON.stringify(atendimentoData, null, 2)}`,
