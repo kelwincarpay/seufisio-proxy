@@ -214,7 +214,7 @@ router.post('/create', async (req: Request, res: Response) => {
     let remarcadoId: number | null = null;
 
     // Try pacoteId first (which is cicloId for servico_recorrente)
-    const idsToTry = cicloId ? [cicloId, sale.id] : [sale.id];
+    const idsToTry = [sale.id];
 
     for (const tryId of idsToTry) {
       try {
