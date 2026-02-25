@@ -45,15 +45,24 @@ async function makeRequest<T>(config: AxiosRequestConfig, retried = false): Prom
 
 export const seufisioClient = {
   async get<T = any>(url: string, params?: Record<string, any>): Promise<T> {
-    return makeRequest<T>({ method: 'GET', url, params });
+    return makeRequest<T>({ method: "GET", url, params });
   },
 
   async post<T = any>(url: string, data?: any): Promise<T> {
     return makeRequest<T>({
-      method: 'POST',
+      method: "POST",
       url,
       data,
-      headers: { 'content-type': 'application/json' },
+      headers: { "content-type": "application/json" },
+    });
+  },
+
+  async put<T = any>(url: string, data?: any): Promise<T> {
+    return makeRequest<T>({
+      method: "PUT",
+      url,
+      data,
+      headers: { "content-type": "application/json" },
     });
   },
 };

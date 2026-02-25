@@ -1,0 +1,336 @@
+## Auth API
+
+```CURL
+curl 'https://api.seufisio.com.br/api/relatorio/atendimento?descending=false&page=1&rowsPerPage=100&rowsNumber=9&filtro_data_atendimento_inicial=2026-01-01&filtro_data_atendimento_final=2026-01-31&filtro_ausencias_sem_reposicoes=0&filtro_apenas_reposicoes=0&filtro_cliente_id=145' \
+  -H 'accept: application/json, text/plain, */*' \
+  -H 'accept-language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7' \
+  -H 'acesso: web-desktop' \
+  -H 'authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIyIiwianRpIjoiZTNkYzUxZWU0OWRlMGY1M2RmMjQyMzE3NzVkMDNhY2NlZmE0NjY4YTY5ZTBkOWE2MmY2YWY2OTY4NTYwNTkzMmQ4OWI1ZTEyMTVlZWMzY2QiLCJpYXQiOjE3NzE5NzQ2MzYuNjU0NDY5LCJuYmYiOjE3NzE5NzQ2MzYuNjU0NDcyLCJleHAiOjE3NzIxNTEwMzYuNjQwODAzLCJzdWIiOiIyMTcxNCIsInNjb3BlcyI6W119.MI1nnTIslx13b7savaUAr8R27iLEhid0IVwT-qFQmx1hU3ookexdGhYgAEZEYXBdK2Jrjb70GakUQOEXkW8iOQm25Z4MMMBQ0bMlgFHCXxbmTgl4rWLfG1fyKUTYYeL69-n5GGHxThGDEvTy7NsUQ6MnjDnJL9nEgkLp_jSyfTENW9YVfAUWkq1OWUCbib599JE-OxmkVitafJfk1sOTeB1yv0vmUx_BInqfZwokSsi9IrSYV5KiOENV3oclp3I80cHjD3ZEV0rKd5wNexxbR2oOhIA4ZnX6_3-0SZmyM9DerTXiJgmeUTaRTCsBAVvEUyRFOAtw5Prx5LZx-o8XcPKEZG4sjxeur6YaQFm-T2efgj1BlByp1cA127qZ5h6qKG9PCgGY26dBa4WPfs0swVUAbqEHXID5Fa2-rfqeSXROjIhw6dpmU_4jXR4bPuvbDtusjB98yIj53vbgzpKaR4tWNZh9jeoMmPzytRdRGCGLEOVugu-W8JGcrzhCK9gd664i8Pn8FzKQqW3K3lCWulqQwaFZZh9skv6-SpNJgyK22TPihV1BMqyVSjSs0VrYAV4Npqh_b-BSnilu8pFMzNP92p3-C1UC7fB4GbFaH_LSqu28K075J_GprH0V3h--8dTIP6Z3XIu4rlOMseqbzf1euDqljN7kcvqusot4WPQ' \
+  -H 'origin: https://app.seufisio.com.br' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://app.seufisio.com.br/' \
+  -H 'sec-ch-ua: "Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "macOS"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-site' \
+  -H 'setfisio: 9208' \
+  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36' \
+  -H 'x-requested-with: XMLHttpRequest' \
+  -H 'x-version-app: 24'
+```
+
+## Response
+
+```JSON
+{
+    "valor_total": 238.22222222222223,
+    "atendimentos_status": [
+        {
+            "id": 4,
+            "status_nome": "Finalizado",
+            "qtd": 5,
+            "clientes": "[145]"
+        },
+        {
+            "id": 5,
+            "status_nome": "N\u00e3o Compareceu",
+            "qtd": 2,
+            "clientes": "[145]"
+        },
+        {
+            "id": 6,
+            "status_nome": "Aus\u00eancia Justificada",
+            "qtd": 2,
+            "clientes": "[145]"
+        }
+    ],
+    "qtd_clientes": 1,
+    "current_page": 1,
+    "data": [
+        {
+            "id": 3472,
+            "data_atendimento": "2026-01-01",
+            "hora_atendimento": "15:00:00",
+            "atendimento_combo_id": null,
+            "cliente_id": 145,
+            "cliente_nome": "Adriana Lima de Oliveira",
+            "cliente_telefone": "(11) 99554-8154",
+            "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
+            "sala_nome": "Sala 01",
+            "tipo_atendimento_nome": "Pilates 2x na Semana",
+            "status_id": 4,
+            "remarcado_id": null,
+            "check_in_gympas": null,
+            "check_in_totalpass": 0,
+            "agendado_app": null,
+            "remarcado_app": null,
+            "aula_exp": 0,
+            "prontuario_finalizado": 0,
+            "checkin_facial_realizado": 0,
+            "desmarcado": "N\u00e3o",
+            "forma_pagamento_nome": "PIX",
+            "status_nome": "Finalizado",
+            "valor": 37.22222222222222,
+            "pago": "1",
+            "obs": "Servi\u00e7o Nr: 54  \/  Ciclo Nr: 183  -  Conta paga",
+            "data_hora": "2026-01-01 15:00:00"
+        },
+        {
+            "id": 3927,
+            "data_atendimento": "2026-01-06",
+            "hora_atendimento": "15:00:00",
+            "atendimento_combo_id": null,
+            "cliente_id": 145,
+            "cliente_nome": "Adriana Lima de Oliveira",
+            "cliente_telefone": "(11) 99554-8154",
+            "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
+            "sala_nome": "Sala 01",
+            "tipo_atendimento_nome": "Pilates 2x na Semana",
+            "status_id": 6,
+            "remarcado_id": null,
+            "check_in_gympas": null,
+            "check_in_totalpass": 0,
+            "agendado_app": null,
+            "remarcado_app": null,
+            "aula_exp": 0,
+            "prontuario_finalizado": 0,
+            "checkin_facial_realizado": 0,
+            "desmarcado": "N\u00e3o",
+            "forma_pagamento_nome": null,
+            "status_nome": "Aus\u00eancia Justificada",
+            "valor": 0,
+            "pago": "0",
+            "obs": "Servi\u00e7o Nr: 54  \/  Ciclo Nr: 217  -  Conta em aberto",
+            "data_hora": "2026-01-06 15:00:00"
+        },
+        {
+            "id": 3928,
+            "data_atendimento": "2026-01-08",
+            "hora_atendimento": "15:00:00",
+            "atendimento_combo_id": null,
+            "cliente_id": 145,
+            "cliente_nome": "Adriana Lima de Oliveira",
+            "cliente_telefone": "(11) 99554-8154",
+            "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
+            "sala_nome": "Sala 01",
+            "tipo_atendimento_nome": "Pilates 2x na Semana",
+            "status_id": 6,
+            "remarcado_id": null,
+            "check_in_gympas": null,
+            "check_in_totalpass": 0,
+            "agendado_app": null,
+            "remarcado_app": null,
+            "aula_exp": 0,
+            "prontuario_finalizado": 0,
+            "checkin_facial_realizado": 0,
+            "desmarcado": "N\u00e3o",
+            "forma_pagamento_nome": null,
+            "status_nome": "Aus\u00eancia Justificada",
+            "valor": 0,
+            "pago": "0",
+            "obs": "Servi\u00e7o Nr: 54  \/  Ciclo Nr: 217  -  Conta em aberto",
+            "data_hora": "2026-01-08 15:00:00"
+        },
+        {
+            "id": 4168,
+            "data_atendimento": "2026-01-13",
+            "hora_atendimento": "15:00:00",
+            "atendimento_combo_id": null,
+            "cliente_id": 145,
+            "cliente_nome": "Adriana Lima de Oliveira",
+            "cliente_telefone": "(11) 99554-8154",
+            "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
+            "sala_nome": "Sala 01",
+            "tipo_atendimento_nome": "Pilates 2x na Semana",
+            "status_id": 5,
+            "remarcado_id": null,
+            "check_in_gympas": null,
+            "check_in_totalpass": 0,
+            "agendado_app": null,
+            "remarcado_app": null,
+            "aula_exp": 0,
+            "prontuario_finalizado": 0,
+            "checkin_facial_realizado": 0,
+            "desmarcado": "N\u00e3o",
+            "forma_pagamento_nome": "PIX",
+            "status_nome": "N\u00e3o Compareceu",
+            "valor": 33.5,
+            "pago": "1",
+            "obs": "Servi\u00e7o Nr: 64  \/  Ciclo Nr: 248  -  Conta paga",
+            "data_hora": "2026-01-13 15:00:00"
+        },
+        {
+            "id": 4169,
+            "data_atendimento": "2026-01-15",
+            "hora_atendimento": "15:00:00",
+            "atendimento_combo_id": null,
+            "cliente_id": 145,
+            "cliente_nome": "Adriana Lima de Oliveira",
+            "cliente_telefone": "(11) 99554-8154",
+            "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
+            "sala_nome": "Sala 01",
+            "tipo_atendimento_nome": "Pilates 2x na Semana",
+            "status_id": 4,
+            "remarcado_id": null,
+            "check_in_gympas": null,
+            "check_in_totalpass": 0,
+            "agendado_app": null,
+            "remarcado_app": null,
+            "aula_exp": 0,
+            "prontuario_finalizado": 1,
+            "checkin_facial_realizado": 0,
+            "desmarcado": "N\u00e3o",
+            "forma_pagamento_nome": "PIX",
+            "status_nome": "Finalizado",
+            "valor": 33.5,
+            "pago": "1",
+            "obs": "Servi\u00e7o Nr: 64  \/  Ciclo Nr: 248  -  Conta paga",
+            "data_hora": "2026-01-15 15:00:00"
+        },
+        {
+            "id": 4170,
+            "data_atendimento": "2026-01-20",
+            "hora_atendimento": "15:00:00",
+            "atendimento_combo_id": null,
+            "cliente_id": 145,
+            "cliente_nome": "Adriana Lima de Oliveira",
+            "cliente_telefone": "(11) 99554-8154",
+            "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
+            "sala_nome": "Sala 01",
+            "tipo_atendimento_nome": "Pilates 2x na Semana",
+            "status_id": 4,
+            "remarcado_id": null,
+            "check_in_gympas": null,
+            "check_in_totalpass": 0,
+            "agendado_app": null,
+            "remarcado_app": null,
+            "aula_exp": 0,
+            "prontuario_finalizado": 1,
+            "checkin_facial_realizado": 0,
+            "desmarcado": "N\u00e3o",
+            "forma_pagamento_nome": "PIX",
+            "status_nome": "Finalizado",
+            "valor": 33.5,
+            "pago": "1",
+            "obs": "Servi\u00e7o Nr: 64  \/  Ciclo Nr: 248  -  Conta paga",
+            "data_hora": "2026-01-20 15:00:00"
+        },
+        {
+            "id": 4171,
+            "data_atendimento": "2026-01-22",
+            "hora_atendimento": "15:00:00",
+            "atendimento_combo_id": null,
+            "cliente_id": 145,
+            "cliente_nome": "Adriana Lima de Oliveira",
+            "cliente_telefone": "(11) 99554-8154",
+            "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
+            "sala_nome": "Sala 01",
+            "tipo_atendimento_nome": "Pilates 2x na Semana",
+            "status_id": 4,
+            "remarcado_id": null,
+            "check_in_gympas": null,
+            "check_in_totalpass": 0,
+            "agendado_app": null,
+            "remarcado_app": null,
+            "aula_exp": 0,
+            "prontuario_finalizado": 1,
+            "checkin_facial_realizado": 0,
+            "desmarcado": "N\u00e3o",
+            "forma_pagamento_nome": "PIX",
+            "status_nome": "Finalizado",
+            "valor": 33.5,
+            "pago": "1",
+            "obs": "Servi\u00e7o Nr: 64  \/  Ciclo Nr: 248  -  Conta paga",
+            "data_hora": "2026-01-22 15:00:00"
+        },
+        {
+            "id": 4172,
+            "data_atendimento": "2026-01-27",
+            "hora_atendimento": "15:00:00",
+            "atendimento_combo_id": null,
+            "cliente_id": 145,
+            "cliente_nome": "Adriana Lima de Oliveira",
+            "cliente_telefone": "(11) 99554-8154",
+            "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
+            "sala_nome": "Sala 01",
+            "tipo_atendimento_nome": "Pilates 2x na Semana",
+            "status_id": 4,
+            "remarcado_id": null,
+            "check_in_gympas": null,
+            "check_in_totalpass": 0,
+            "agendado_app": null,
+            "remarcado_app": null,
+            "aula_exp": 0,
+            "prontuario_finalizado": 1,
+            "checkin_facial_realizado": 0,
+            "desmarcado": "N\u00e3o",
+            "forma_pagamento_nome": "PIX",
+            "status_nome": "Finalizado",
+            "valor": 33.5,
+            "pago": "1",
+            "obs": "Servi\u00e7o Nr: 64  \/  Ciclo Nr: 248  -  Conta paga",
+            "data_hora": "2026-01-27 15:00:00"
+        },
+        {
+            "id": 4173,
+            "data_atendimento": "2026-01-29",
+            "hora_atendimento": "15:00:00",
+            "atendimento_combo_id": null,
+            "cliente_id": 145,
+            "cliente_nome": "Adriana Lima de Oliveira",
+            "cliente_telefone": "(11) 99554-8154",
+            "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
+            "sala_nome": "Sala 01",
+            "tipo_atendimento_nome": "Pilates 2x na Semana",
+            "status_id": 5,
+            "remarcado_id": null,
+            "check_in_gympas": null,
+            "check_in_totalpass": 0,
+            "agendado_app": null,
+            "remarcado_app": null,
+            "aula_exp": 0,
+            "prontuario_finalizado": 0,
+            "checkin_facial_realizado": 0,
+            "desmarcado": "N\u00e3o",
+            "forma_pagamento_nome": "PIX",
+            "status_nome": "N\u00e3o Compareceu",
+            "valor": 33.5,
+            "pago": "1",
+            "obs": "Servi\u00e7o Nr: 64  \/  Ciclo Nr: 248  -  Conta paga",
+            "data_hora": "2026-01-29 15:00:00"
+        }
+    ],
+    "first_page_url": "https:\/\/api.seufisio.com.br\/api\/relatorio\/atendimento?page=1",
+    "from": 1,
+    "last_page": 1,
+    "last_page_url": "https:\/\/api.seufisio.com.br\/api\/relatorio\/atendimento?page=1",
+    "links": [
+        {
+            "url": null,
+            "label": "\u00ab Anterior",
+            "page": null,
+            "active": false
+        },
+        {
+            "url": "https:\/\/api.seufisio.com.br\/api\/relatorio\/atendimento?page=1",
+            "label": "1",
+            "page": 1,
+            "active": true
+        },
+        {
+            "url": null,
+            "label": "Pr\u00f3ximo \u00bb",
+            "page": null,
+            "active": false
+        }
+    ],
+    "next_page_url": null,
+    "path": "https:\/\/api.seufisio.com.br\/api\/relatorio\/atendimento",
+    "per_page": 100,
+    "prev_page_url": null,
+    "to": 9,
+    "total": 9
+}
+```

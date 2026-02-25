@@ -186,6 +186,135 @@ Authorization: Bearer {{SEUFISIO_API_TOKEN}}
 
 ---
 
+### 5. Attendance Report
+
+Get a detailed attendance report for a specific client within a date range. Returns all sessions with their statuses, professional info, and payment status.
+
+**Request:**
+```
+GET {{SEUFISIO_PROXY_URL}}/api/attendances/report?client_id=<id>&start_date=<YYYY-MM-DD>&end_date=<YYYY-MM-DD>
+Authorization: Bearer {{SEUFISIO_API_TOKEN}}
+```
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| client_id | number | Yes | Client ID |
+| start_date | string | Yes | Start date (YYYY-MM-DD) |
+| end_date | string | Yes | End date (YYYY-MM-DD) |
+| page | number | No | Page number (default: 1) |
+| rows_per_page | number | No | Results per page (default: 100) |
+| only_absences | 0\|1 | No | Filter only absences without repositions (default: 0) |
+| only_repositions | 0\|1 | No | Filter only reposition sessions (default: 0) |
+
+**Response:**
+```json
+{
+  "valor_total": 238.22,
+  "atendimentos_status": [
+    { "id": 4, "status_nome": "Finalizado", "qtd": 5 },
+    { "id": 5, "status_nome": "Não Compareceu", "qtd": 2 },
+    { "id": 6, "status_nome": "Ausência Justificada", "qtd": 2 }
+  ],
+  "data": [
+    {
+      "id": 3472,
+      "data_atendimento": "2026-01-01",
+      "hora_atendimento": "15:00:00",
+      "cliente_id": 145,
+      "cliente_nome": "Adriana Lima de Oliveira",
+      "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
+      "tipo_atendimento_nome": "Pilates 2x na Semana",
+      "status_id": 4,
+      "status_nome": "Finalizado",
+      "remarcado_id": null,
+      "valor": 37.22,
+      "pago": "1"
+    }
+  ],
+  "total": 9
+}
+```
+
+**Use cases:**
+- Viewing a client's attendance history for a specific month
+- Counting how many absences a client had in a period
+- Checking if sessions were paid
+
+---
+
+### 6. List Attendance Statuses
+
+Get all possible attendance statuses in the system.
+
+**Request:**
+```
+GET {{SEUFISIO_PROXY_URL}}/api/attendances/statuses
+Authorization: Bearer {{SEUFISIO_API_TOKEN}}
+```
+
+**Response:**
+```json
+[
+  { "id": 1, "nome": "Aguardando Chegar", "abreviacao": "AC", "color": "#64b5f6", "ativo": true },
+  { "id": 4, "nome": "Finalizado", "abreviacao": "FI", "color": "#81c784", "ativo": true },
+  { "id": 5, "nome": "Não Compareceu", "abreviacao": "NC", "color": "#e57373", "ativo": true },
+  { "id": 6, "nome": "Ausência Justificada", "abreviacao": "AJ", "color": "#ba68c8", "ativo": true },
+  { "id": 7, "nome": "Ausência do Profissional", "abreviacao": "AP", "color": "#ffb74d", "ativo": true }
+]
+```
+
+**Key status IDs:**
+| ID | Name | Description |
+|----|------|-------------|
+| 1 | Aguardando Chegar | Scheduled, waiting for client |
+| 4 | Finalizado | Completed session |
+| 5 | Não Compareceu | Client did not show up |
+| 6 | Ausência Justificada | Justified absence (eligible for reposition) |
+| 7 | Ausência do Profissional | Professional absence |
+
+**Use cases:**
+- Getting the list of statuses to display to the user
+- Looking up status IDs when updating an attendance
+
+---
+
+### 7. Edit Attendance
+
+Update an existing attendance record. Commonly used to change status (e.g., mark as "Ausência Justificada").
+
+**Request:**
+```
+PUT {{SEUFISIO_PROXY_URL}}/api/attendances/<id>
+Authorization: Bearer {{SEUFISIO_API_TOKEN}}
+Content-Type: application/json
+
+{
+  "status_id": 6
+}
+```
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| id | number | Yes | Attendance ID (in URL path) |
+| status_id | number | No | New status ID (see statuses endpoint) |
+| data_atendimento | string | No | New date (YYYY-MM-DD) |
+| hora_atendimento | string | No | New time (HH:mm) |
+| profissional_id | number | No | New professional ID |
+| obs | string | No | Observation/notes |
+
+> **Note:** You can send a partial body with only the fields you want to update, or send the full attendance object. SeuFisio accepts both.
+
+**Success Response (200):** Returns the full updated attendance object.
+
+**Use cases:**
+- Marking a session as "Ausência Justificada" (status_id: 6) so a reposition can be created
+- Changing the status of a session (e.g., marking as completed)
+- Updating observation notes on an attendance
+
+---
+
 ## Reposição (Session Rescheduling) Flow
 
 When a client misses a session, they get a "reposição" (reposition) — the ability to reschedule that missed class. This flow lets you search for a client, check how many repositions they have, and create a new rescheduled session.
