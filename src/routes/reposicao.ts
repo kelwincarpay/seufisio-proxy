@@ -128,7 +128,12 @@ router.post('/create', async (req: Request, res: Response) => {
     }
 
     const tipoAtendimentoId = sale.tipoAtendimentoId;
-    const pacoteId = sale.id;
+    // For servico_recorrente, use cicloId; for pacote_personalizado, use sale.id
+    const cicloId = sale.cicloId;
+    const pacoteId = cicloId || sale.id;
+    console.log(
+      `[Reposição Create] Sale type: ${sale.tipoVenda}, sale.id: ${sale.id}, cicloId: ${cicloId}, using pacoteId: ${pacoteId}`,
+    );
 
     // Step 2: Get professionals
     console.log("[Reposição Create] Getting professionals list");
@@ -257,6 +262,11 @@ router.post('/create', async (req: Request, res: Response) => {
       hora_final_atendimento: finalHour,
       atualizar_valor_cobranca_ciclo: false,
     };
+
+    // For servico_recorrente, also include ciclo_id
+    if (cicloId) {
+      atendimentoData.ciclo_id = cicloId;
+    }
 
     // Only include remarcado_id if we found one
     if (remarcadoId) {
