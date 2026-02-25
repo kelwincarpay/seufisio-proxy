@@ -126,7 +126,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
 
     if (!id) {
-      res.status(400).json({ error: 'Missing attendance id' });
+      res.status(400).json({ error: "Missing attendance id" });
       return;
     }
 
@@ -145,6 +145,22 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     // Step 2: Merge the caller's changes on top of the full object
     const mergedPayload = { ...currentAttendance, ...changes };
+
+    // Step 2.5: If hora_atendimento was changed, auto-recalculate hora_final_atendimento
+    if (changes.hora_atendimento) {
+      const periodoAtendimento =
+        currentAttendance.tipo?.periodo_atendimento ||
+        currentAttendance.duracao_atendimento ||
+        50;
+      const hourStr = changes.hora_atendimento.replace(/:00$/, ""); // strip trailing :00 if "HH:mm:00"
+      const [h, m] = hourStr.split(":").map(Number);
+      const endMinutes = m + periodoAtendimento;
+      const finalHour = `${String(h + Math.floor(endMinutes / 60)).padStart(2, "0")}:${String(endMinutes % 60).padStart(2, "0")}`;
+      mergedPayload.hora_final_atendimento = finalHour;
+      console.log(
+        `[Attendance Update] Recalculated hora_final_atendimento: ${finalHour} (periodo: ${periodoAtendimento}min)`,
+      );
+    }
 
     console.log(`[Attendance Update] Updating attendance ${id}`);
     console.log(`[Attendance Update] Changes: ${JSON.stringify(changes)}`);
