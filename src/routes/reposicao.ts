@@ -270,8 +270,10 @@ router.post('/create', async (req: Request, res: Response) => {
       tipo_atendimento_id: tipoAtendimentoId,
       status_id: 1,
       remarcado_id: remarcadoId,
-      pacote_id: pacoteId,
-      is_pacote: pacoteId,
+      // servico_recorrente uses servico_ciclo_id, pacote uses pacote_id
+      ...(isServicoRecorrente
+        ? { servico_ciclo_id: cicloId, is_pacote: cicloId }
+        : { pacote_id: sale.id, is_pacote: sale.id }),
       aula_experimental: false,
       created_by_user_id: 21714,
       hora_final_atendimento: finalHour,

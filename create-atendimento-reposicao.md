@@ -20,7 +20,7 @@ curl 'https://api.seufisio.com.br/api/atendimento' \
   -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36' \
   -H 'x-requested-with: XMLHttpRequest' \
   -H 'x-version-app: 24' \
-  --data-raw '{"cliente_id":216,"profissional_id":1,"data_atendimento":"2026-02-25","duracao_atendimento":50,"hora_atendimento":"09:30","sala_id":1,"tipo_atendimento_id":12,"status_id":1,"remarcado_id":6331,"pacote_id":15,"is_pacote":15,"aula_experimental":false,"created_by_user_id":21714,"hora_final_atendimento":"10:20","atualizar_valor_cobranca_ciclo":false}'
+  --data-raw '{"cliente_id":217,"profissional_id":1,"data_atendimento":"2026-02-27","duracao_atendimento":50,"hora_atendimento":"20:00","sala_id":1,"tipo_atendimento_id":9,"status_id":1,"remarcado_id":6967,"is_pacote":318,"servico_ciclo_id":318,"aula_experimental":false,"created_by_user_id":21714,"hora_final_atendimento":"20:50","atualizar_valor_cobranca_ciclo":false}'
 ```
 
 ## Response
