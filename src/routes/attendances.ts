@@ -118,9 +118,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     console.log(`[Attendance Update] Updating attendance ${id}`);
-    console.log(
-      `[Attendance Update] Payload: ${JSON.stringify(body, null, 2)}`,
-    );
+    console.log(`[Attendance Update] Payload: ${JSON.stringify(body)}`);
 
     const data = await seufisioClient.put(`/api/atendimento/${id}`, body);
 
