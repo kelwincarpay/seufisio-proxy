@@ -208,47 +208,45 @@ router.post('/create', async (req: Request, res: Response) => {
     }
 
     // Step 5: Get atendimentos to repor (for remarcado_id) — REQUIRED
+    // Different endpoint depending on sale type
+    const isServicoRecorrente = sale.tipoVenda === "servico_recorrente";
+    const reporEndpoint = isServicoRecorrente
+      ? `/api/servico-ciclo/${sale.id}/get-atendimentos-repor-by-servico-id`
+      : `/api/pacote/${sale.id}/get-atendimentos-repor`;
+
     console.log(
-      `[Reposição Create] Getting atendimentos to repor for pacoteId ${pacoteId} (cicloId: ${cicloId}, sale.id: ${sale.id})`,
+      `[Reposição Create] tipoVenda: ${sale.tipoVenda}, endpoint: ${reporEndpoint}`,
     );
+
     let remarcadoId: number | null = null;
 
-    // Try pacoteId first (which is cicloId for servico_recorrente)
-    const idsToTry = [sale.id];
+    try {
+      const atendimentosRepor: any[] = await seufisioClient.get(reporEndpoint);
 
-    for (const tryId of idsToTry) {
-      try {
-        console.log(
-          `[Reposição Create] Trying get-atendimentos-repor with id: ${tryId}`,
-        );
-        const atendimentosRepor: any[] = await seufisioClient.get(
-          `/api/pacote/${tryId}/get-atendimentos-repor`,
-        );
+      console.log(
+        `[Reposição Create] Atendimentos to repor: ${JSON.stringify(atendimentosRepor)}`,
+      );
 
-        console.log(
-          `[Reposição Create] Response for id ${tryId}: ${JSON.stringify(atendimentosRepor)}`,
-        );
-
-        if (atendimentosRepor && atendimentosRepor.length > 0) {
-          remarcadoId = atendimentosRepor[0].id;
-          console.log(
-            `[Reposição Create] Found remarcado_id: ${remarcadoId} using id: ${tryId}`,
-          );
-          break;
-        }
-      } catch (err: any) {
-        console.log(
-          `[Reposição Create] Failed with id ${tryId}:`,
-          err?.response?.data || err?.message,
-        );
+      if (atendimentosRepor && atendimentosRepor.length > 0) {
+        remarcadoId = atendimentosRepor[0].id;
+        console.log(`[Reposição Create] Found remarcado_id: ${remarcadoId}`);
       }
+    } catch (err: any) {
+      console.error(
+        `[Reposição Create] Failed to get atendimentos to repor:`,
+        err?.response?.data || err?.message,
+      );
     }
 
     if (!remarcadoId) {
       res.status(404).json({
         error:
-          "Could not find the original attendance for reposition (remarcado_id). The sale reports pending repositions but no original attendance was found.",
-        debug: { saleId: sale.id, cicloId, idsTriedForRepor: idsToTry },
+          "Could not find the original attendance for reposition (remarcado_id).",
+        debug: {
+          saleId: sale.id,
+          tipoVenda: sale.tipoVenda,
+          endpointUsed: reporEndpoint,
+        },
       });
       return;
     }
