@@ -279,9 +279,27 @@ Authorization: Bearer {{SEUFISIO_API_TOKEN}}
 
 ---
 
-### 7. Edit Attendance
+### 7. Get Single Attendance
 
-Update an existing attendance record. Commonly used to change status (e.g., mark as "Ausência Justificada").
+Get the full details of a specific attendance record.
+
+**Request:**
+```
+GET {{SEUFISIO_PROXY_URL}}/api/attendances/<id>
+Authorization: Bearer {{SEUFISIO_API_TOKEN}}
+```
+
+**Response:** Returns the full attendance object with client, professional, status, and type details.
+
+**Use cases:**
+- Getting all details of a specific session before making changes
+- Checking the current status of an attendance
+
+---
+
+### 8. Edit Attendance
+
+Update an existing attendance record. You only need to send the fields you want to change — the proxy automatically fetches the current full attendance from SeuFisio, merges your changes on top, and sends the complete object.
 
 **Request:**
 ```
@@ -294,23 +312,21 @@ Content-Type: application/json
 }
 ```
 
-**Parameters:**
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| id | number | Yes | Attendance ID (in URL path) |
-| status_id | number | No | New status ID (see statuses endpoint) |
-| data_atendimento | string | No | New date (YYYY-MM-DD) |
-| hora_atendimento | string | No | New time (HH:mm) |
-| profissional_id | number | No | New professional ID |
-| obs | string | No | Observation/notes |
-
-> **Note:** You can send a partial body with only the fields you want to update, or send the full attendance object. SeuFisio accepts both.
+**Parameters (in body — only send fields you want to change):**
+| Field | Type | Description |
+|-------|------|-------------|
+| status_id | number | New status ID (see statuses endpoint) |
+| data_atendimento | string | New date (YYYY-MM-DD) |
+| hora_atendimento | string | New time (HH:mm) |
+| hora_final_atendimento | string | New end time (HH:mm) |
+| profissional_id | number | New professional ID |
+| obs | string | Observation/notes |
 
 **Success Response (200):** Returns the full updated attendance object.
 
 **Use cases:**
 - Marking a session as "Ausência Justificada" (status_id: 6) so a reposition can be created
-- Changing the status of a session (e.g., marking as completed)
+- Changing the status of a session (e.g., marking as completed with status_id: 4)
 - Updating observation notes on an attendance
 
 ---

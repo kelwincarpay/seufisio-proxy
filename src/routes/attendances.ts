@@ -97,9 +97,29 @@ router.get('/statuses', async (_req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/attendances/:id
+ * Get a single attendance record by ID
+ */
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const data = await seufisioClient.get(`/api/atendimento/${id}`);
+    res.json(data);
+  } catch (error: any) {
+    console.error('[Attendance Get] Error:', error?.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to fetch attendance' });
+  }
+});
+
+/**
  * PUT /api/attendances/:id
  * Update an attendance record (e.g. change status, reschedule, etc.)
- * Passes the full body through to SeuFisio
+ * 
+ * SeuFisio requires the FULL attendance object on PUT.
+ * This endpoint automatically:
+ * 1. Fetches the current full attendance from SeuFisio
+ * 2. Merges the caller's changes on top
+ * 3. Sends the complete merged object to SeuFisio
  */
 router.put('/:id', async (req: Request, res: Response) => {
   try {
@@ -110,17 +130,33 @@ router.put('/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    const body = req.body;
+    const changes = req.body;
 
-    if (!body || Object.keys(body).length === 0) {
-      res.status(400).json({ error: 'Request body is required' });
+    if (!changes || Object.keys(changes).length === 0) {
+      res.status(400).json({ error: "Request body is required" });
       return;
     }
 
-    console.log(`[Attendance Update] Updating attendance ${id}`);
-    console.log(`[Attendance Update] Payload: ${JSON.stringify(body)}`);
+    // Step 1: Get the current full attendance from SeuFisio
+    console.log(`[Attendance Update] Fetching current attendance ${id}`);
+    const currentAttendance: Record<string, any> = await seufisioClient.get(
+      `/api/atendimento/${id}`,
+    );
 
-    const data = await seufisioClient.put(`/api/atendimento/${id}`, body);
+    // Step 2: Merge the caller's changes on top of the full object
+    const mergedPayload = { ...currentAttendance, ...changes };
+
+    console.log(`[Attendance Update] Updating attendance ${id}`);
+    console.log(`[Attendance Update] Changes: ${JSON.stringify(changes)}`);
+    console.log(
+      `[Attendance Update] Full payload: ${JSON.stringify(mergedPayload)}`,
+    );
+
+    // Step 3: Send the complete merged object to SeuFisio
+    const data = await seufisioClient.put(
+      `/api/atendimento/${id}`,
+      mergedPayload,
+    );
 
     console.log(`[Attendance Update] Success for ${id}`);
     res.json(data);
@@ -134,4 +170,3 @@ router.put('/:id', async (req: Request, res: Response) => {
 });
 
 export default router;
-
