@@ -92,14 +92,18 @@ router.get('/count/:clientId', async (req: Request, res: Response) => {
  */
 router.post('/create', async (req: Request, res: Response) => {
   try {
-    const { clientId, date, hour, saleId } = req.body;
+    const { clientId, date, hour: rawHour, saleId } = req.body;
 
-    if (!clientId || !date || !hour || !saleId) {
+    if (!clientId || !date || !rawHour || !saleId) {
       res.status(400).json({
         error: "Missing required fields: clientId, date, hour, saleId",
       });
       return;
     }
+
+    // Normalize hour to HH:mm to prevent string comparison issues
+    const [rawH, rawM] = rawHour.split(":").map(Number);
+    const hour = `${String(rawH).padStart(2, "0")}:${String(rawM || 0).padStart(2, "0")}`;
 
     // Step 1: Get sale details
     console.log(
@@ -166,7 +170,51 @@ router.post('/create', async (req: Request, res: Response) => {
     );
     let availableProfessional: any = null;
 
+    // Map JS getDay() (0=Sun) to SeuFisio professional schedule field names
+    const dayNames = [
+      "domingo",
+      "segunda",
+      "terca",
+      "quarta",
+      "quinta",
+      "sexta",
+      "sabado",
+    ];
+    const requestedDayName = dayNames[requestedDate.getDay()];
+
     for (const prof of activeProfessionals) {
+      // Fetch full professional details to validate working schedule
+      let profDetails: any = null;
+      try {
+        profDetails = await seufisioClient.get(`/api/profissional/${prof.id}`);
+      } catch (err: any) {
+        console.warn(
+          `[Reposição Create] Could not fetch details for professional ${prof.nome} (${prof.id}), skipping schedule validation:`,
+          err?.response?.status || err?.message,
+        );
+      }
+
+      if (profDetails) {
+        // Check if professional works on the requested day of the week
+        if (profDetails[requestedDayName] === false) {
+          console.log(
+            `[Reposição Create] Professional ${prof.nome} (${prof.id}): does not work on ${requestedDayName}, skipping`,
+          );
+          continue;
+        }
+
+        // Check if the requested hour falls within their working hours
+        const startWork = profDetails.inicio_atendimento?.substring(0, 5); // e.g. "07:00"
+        const endWork = profDetails.fim_atendimento?.substring(0, 5); // e.g. "21:00"
+        if (startWork && endWork && (hour < startWork || hour >= endWork)) {
+          console.log(
+            `[Reposição Create] Professional ${prof.nome} (${prof.id}): ${hour} is outside working hours ${startWork}-${endWork}, skipping`,
+          );
+          continue;
+        }
+      }
+
+      // Fetch booked events for the week to check slot availability
       const events: any[] = await seufisioClient.get("/api/basic-events", {
         profissional_id: prof.id,
         start: startTimestamp,
@@ -191,7 +239,7 @@ router.post('/create', async (req: Request, res: Response) => {
       });
 
       console.log(
-        `[Reposição Create] Professional ${prof.nome} (${prof.id}): ${overlappingEvents.length} events at ${date} ${hour}`,
+        `[Reposição Create] Professional ${prof.nome} (${prof.id}): ${overlappingEvents.length}/${env.MAX_ATTENDANCES_PER_HOUR} events at ${date} ${hour}`,
       );
 
       if (overlappingEvents.length < env.MAX_ATTENDANCES_PER_HOUR) {
