@@ -626,6 +626,8 @@ Authorization: Bearer {{SEUFISIO_API_TOKEN}}
   "date": "2026-03-03",
   "slots": [
     {
+      "slot_id": 1316,
+      "grupo_id": 1,
       "profissional_id": 1,
       "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
       "occur_date": "2026-03-03",
@@ -637,6 +639,8 @@ Authorization: Bearer {{SEUFISIO_API_TOKEN}}
       "available_spots": 2
     },
     {
+      "slot_id": 1315,
+      "grupo_id": 1,
       "profissional_id": 1,
       "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
       "occur_date": "2026-03-03",
@@ -652,6 +656,7 @@ Authorization: Bearer {{SEUFISIO_API_TOKEN}}
 ```
 
 **Key fields:**
+- `slot_id` and `grupo_id`: Required when updating a slot's capacity (see Update Slot Capacity)
 - `available`: Whether there are free spots (`true`/`false`)
 - `available_spots`: Number of available spots remaining
 - When `profissional_id` is omitted, returns slots for ALL active professionals
@@ -660,6 +665,51 @@ Authorization: Bearer {{SEUFISIO_API_TOKEN}}
 - Before creating an attendance, check if the requested time has availability
 - Showing the user which time slots are available on a given day
 - Finding which professional has availability at a desired time
+- Getting `slot_id` and `grupo_id` needed to update a slot's capacity
+
+---
+
+### 11b. Update Slot Capacity
+
+Update the capacity (max number of clients) for a specific time slot. The `slot_id` and `grupo_id` come from the Calendar Availability response above.
+
+**Request:**
+```
+PUT {{SEUFISIO_PROXY_URL}}/api/calendar/slots/<slot_id>
+Authorization: Bearer {{SEUFISIO_API_TOKEN}}
+Content-Type: application/json
+
+{
+  "grupo_id": 1,
+  "total_capacity": 5
+}
+```
+
+**Parameters (in body):**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| grupo_id | number | Yes | Group ID (from calendar response `grupo_id`) |
+| total_capacity | number | Yes | New maximum capacity for the slot |
+
+**Response:**
+```json
+{
+  "success": true,
+  "slot": {
+    "id": 1316,
+    "grupo_id": 1,
+    "occur_date": "2026-03-03",
+    "start_time": "15:00:00",
+    "total_capacity": 5,
+    "total_booked": 2
+  }
+}
+```
+
+**Use cases:**
+- Increasing a slot's capacity when the user wants to fit more clients at a given time
+- Reducing capacity when the professional wants fewer clients in a slot
+- Adjusting availability after the user requests it
 
 ---
 
