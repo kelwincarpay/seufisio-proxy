@@ -465,7 +465,7 @@ Content-Type: application/json
 
 ---
 
-## Conversation Examples
+## Conversation Examples — Reposição
 
 ### Example 1: Client asks to reschedule a missed class
 
@@ -506,3 +506,439 @@ Content-Type: application/json
 1. Search: Find Bruno's ID
 2. Count: `GET /api/reposicao/count/46` → `totalReposicoes: 0`
 3. Respond: "Bruno doesn't have any pending repositions to schedule."
+
+---
+
+## New Attendance APIs
+
+These APIs allow creating new attendances (appointments), customers, charges, and querying availability.
+
+---
+
+### 9. List Attendance Types
+
+Get all attendance types (service types) available in the system.
+
+**Request:**
+```
+GET {{SEUFISIO_PROXY_URL}}/api/attendance-types
+Authorization: Bearer {{SEUFISIO_API_TOKEN}}
+```
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| active | string | No | Set to `false` to include inactive types (default: only active) |
+
+**Response:**
+```json
+{
+  "types": [
+    {
+      "id": 11,
+      "nome": "Sessão Avaliação",
+      "valor_mensal": 50,
+      "periodo_atendimento": 50,
+      "centro_custo_id": 1,
+      "ativo": true
+    },
+    {
+      "id": 8,
+      "nome": "Pilates 1x na Semana",
+      "valor_mensal": 290,
+      "periodo_atendimento": 50,
+      "centro_custo_id": 1,
+      "ativo": true
+    }
+  ]
+}
+```
+
+**Use cases:**
+- When you need to know the attendance type ID for creating an attendance
+- When asking the user which type of session to schedule
+- Getting the price (`valor_mensal`) for a service type
+
+---
+
+### 10. Create Customer
+
+Create a new customer (client) in the system.
+
+**Request:**
+```
+POST {{SEUFISIO_PROXY_URL}}/api/customers
+Authorization: Bearer {{SEUFISIO_API_TOKEN}}
+Content-Type: application/json
+
+{
+  "nome": "John Doe",
+  "cpf": "269.630.270-72"
+}
+```
+
+**Parameters (in body):**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| nome | string | Yes | Full name of the customer |
+| cpf | string | No | CPF (Brazilian ID number) |
+| telefone | string | No | Phone number |
+| email | string | No | Email address |
+
+**Response:**
+```json
+{
+  "success": true,
+  "customer": {
+    "id": 222,
+    "nome": "John Doe",
+    "cpf": "269.630.270-72",
+    "created_at": "2026-02-27T15:22:31.000000Z"
+  }
+}
+```
+
+**Use cases:**
+- When a new client needs to be registered before scheduling their first appointment
+- When searching for a client returns no results and the user confirms they want to create a new one
+
+---
+
+### 11. Check Calendar Availability
+
+Check available time slots for a specific date. Can query a specific professional or all active professionals.
+
+**Request:**
+```
+GET {{SEUFISIO_PROXY_URL}}/api/calendar?date=2026-03-03
+Authorization: Bearer {{SEUFISIO_API_TOKEN}}
+```
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| date | string | Yes | Date to check (YYYY-MM-DD) |
+| profissional_id | number | No | Specific professional ID (if omitted, checks ALL active professionals) |
+
+**Response:**
+```json
+{
+  "date": "2026-03-03",
+  "slots": [
+    {
+      "profissional_id": 1,
+      "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
+      "occur_date": "2026-03-03",
+      "start_time": "15:00:00",
+      "end_time": "15:50:00",
+      "total_capacity": 4,
+      "total_booked": 2,
+      "available": true,
+      "available_spots": 2
+    },
+    {
+      "profissional_id": 1,
+      "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
+      "occur_date": "2026-03-03",
+      "start_time": "19:00:00",
+      "end_time": "19:50:00",
+      "total_capacity": 4,
+      "total_booked": 4,
+      "available": false,
+      "available_spots": 0
+    }
+  ]
+}
+```
+
+**Key fields:**
+- `available`: Whether there are free spots (`true`/`false`)
+- `available_spots`: Number of available spots remaining
+- When `profissional_id` is omitted, returns slots for ALL active professionals
+
+**Use cases:**
+- Before creating an attendance, check if the requested time has availability
+- Showing the user which time slots are available on a given day
+- Finding which professional has availability at a desired time
+
+---
+
+### 12. Create Attendance
+
+Create a new attendance (appointment) for a client.
+
+**Request:**
+```
+POST {{SEUFISIO_PROXY_URL}}/api/attendances
+Authorization: Bearer {{SEUFISIO_API_TOKEN}}
+Content-Type: application/json
+
+{
+  "cliente_id": 222,
+  "profissional_id": 1,
+  "data_atendimento": "2026-03-03",
+  "hora_atendimento": "15:00",
+  "tipo_atendimento_id": 11
+}
+```
+
+**Parameters (in body):**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| cliente_id | number | Yes | Client ID |
+| profissional_id | number | Yes | Professional ID (from calendar availability) |
+| data_atendimento | string | Yes | Date in YYYY-MM-DD format |
+| hora_atendimento | string | Yes | Time in HH:mm format |
+| tipo_atendimento_id | number | Yes | Attendance type ID (from attendance-types endpoint) |
+| sala_id | number | No | Room ID (default: 1) |
+| duracao_atendimento | number | No | Duration in minutes (default: 50) |
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "message": "Atendimento criado com sucesso para 2026-03-03 às 15:00",
+  "atendimento": {
+    "id": 7025,
+    "data": "2026-03-03",
+    "hora": "15:00",
+    "horaFinal": "15:50",
+    "profissional_id": 1,
+    "tipo_atendimento_id": 11,
+    "status": "Aguardando Chegar"
+  }
+}
+```
+
+**Error Response (409) — Slot full:**
+```json
+{
+  "error": "Slot is fully booked at 2026-03-03 15:00 (4/4). Choose a different time."
+}
+```
+
+**Use cases:**
+- Scheduling a new appointment for a client
+- After checking calendar availability and confirming with the user
+
+---
+
+### 13. Create Charge
+
+Create a charge (conta a receber) linked to an attendance.
+
+**Request:**
+```
+POST {{SEUFISIO_PROXY_URL}}/api/charges
+Authorization: Bearer {{SEUFISIO_API_TOKEN}}
+Content-Type: application/json
+
+{
+  "cliente_id": 222,
+  "atendimento_id": 7025,
+  "valor": 50,
+  "data_vencimento": "2026-03-03",
+  "profissional_id": 1,
+  "titulo": "Atendimento NR: 7025",
+  "pago": 0,
+  "produtos_servicos_vinculados": "Sessão Avaliação",
+  "centro_custo_id": 1
+}
+```
+
+**Parameters (in body):**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| cliente_id | number | Yes | Client ID |
+| atendimento_id | number | Yes | Attendance ID (from create attendance) |
+| valor | number | Yes | Amount to charge |
+| data_vencimento | string | Yes | Due date (YYYY-MM-DD), should match attendance date |
+| profissional_id | number | Yes | Professional ID |
+| titulo | string | No | Charge title (default: "Atendimento NR: {id}") |
+| pago | number | No | 0 = not paid, 1 = paid (default: 0) |
+| produtos_servicos_vinculados | string | No | Service description |
+| centro_custo_id | number | No | Cost center ID (default: 1) |
+
+**Response:**
+```json
+{
+  "success": true,
+  "charge": {
+    "id": 452,
+    "titulo": "Atendimento NR: 7025",
+    "valor": 50,
+    "data_vencimento": "2026-03-03",
+    "pago": 0,
+    "cliente_id": 222,
+    "atendimento_id": 7025
+  }
+}
+```
+
+**Use cases:**
+- Creating a payment record after scheduling an attendance
+- Recording payment for a completed session
+
+---
+
+## Create Attendance Skill — Step-by-Step Flow
+
+When the user wants to schedule a new attendance (appointment) for a client, follow this complete flow:
+
+```
+1. Search for the customer → confirm identity or create new customer
+2. Determine the attendance type → ask or use provided info
+3. Check calendar availability → find available slot and professional
+4. Create the attendance → schedule the appointment
+5. Optionally create a charge → record the payment
+```
+
+---
+
+### Step 1: Find or Create Customer
+
+Search for the client by name. If found, confirm with the user. If not found, offer to create a new customer.
+
+**Search:**
+```
+GET {{SEUFISIO_PROXY_URL}}/api/clients?search=<name>
+```
+
+**If found:** Ask the user to confirm: "I found [name] (ID: X). Is this the correct client?"
+
+**If NOT found:** Ask the user to confirm creation: "I didn't find any client with that name. Would you like to create a new client? I'll need their name and CPF."
+
+**Create (if confirmed):**
+```
+POST {{SEUFISIO_PROXY_URL}}/api/customers
+{ "nome": "<name>", "cpf": "<cpf>" }
+```
+
+---
+
+### Step 2: Determine Attendance Type
+
+If the user didn't specify the type of attendance, fetch the available types and ask.
+
+**Fetch types:**
+```
+GET {{SEUFISIO_PROXY_URL}}/api/attendance-types
+```
+
+Present the active types to the user and ask which one to use. Remember the `id`, `nome`, `valor_mensal`, and `centro_custo_id` for later steps.
+
+---
+
+### Step 3: Check Calendar Availability
+
+The user should provide the desired date and time. Check availability by querying the calendar for ALL professionals:
+
+```
+GET {{SEUFISIO_PROXY_URL}}/api/calendar?date=<YYYY-MM-DD>
+```
+
+- Look at the response to find slots where `available` is `true` at the desired time
+- If the desired time has availability, note the `profissional_id` and `profissional_nome` of the available professional
+- If the desired time is NOT available, inform the user and suggest other available times from the response
+- Present the result: "There's availability at [time] with [professional name]."
+
+---
+
+### Step 4: Create the Attendance
+
+With all information confirmed, create the attendance:
+
+```
+POST {{SEUFISIO_PROXY_URL}}/api/attendances
+{
+  "cliente_id": <client_id>,
+  "profissional_id": <professional_id from calendar>,
+  "data_atendimento": "<YYYY-MM-DD>",
+  "hora_atendimento": "<HH:mm>",
+  "tipo_atendimento_id": <type_id>
+}
+```
+
+Confirm success: "Attendance scheduled for [date] at [time] with [professional]!"
+
+---
+
+### Step 5: Optionally Create a Charge
+
+After creating the attendance, ask the user: **"Would you like to create a charge for this attendance?"**
+
+If yes, confirm the details with the user:
+- **Amount (valor):** Use the `valor_mensal` from the attendance type, or ask the user
+- **Due date (data_vencimento):** Same as the attendance date
+- **Title (titulo):** "Atendimento NR: [attendance_id]"
+- **Service (produtos_servicos_vinculados):** The attendance type name
+- **Already paid? (pago):** Ask the user if the charge has already been paid (0 = no, 1 = yes)
+
+Present for confirmation: "I'll create a charge of R$ [valor] due [date] for [service]. Has it already been paid?"
+
+Then create:
+```
+POST {{SEUFISIO_PROXY_URL}}/api/charges
+{
+  "cliente_id": <client_id>,
+  "atendimento_id": <attendance_id>,
+  "valor": <amount>,
+  "data_vencimento": "<attendance_date>",
+  "profissional_id": <professional_id>,
+  "titulo": "Atendimento NR: <attendance_id>",
+  "pago": <0 or 1>,
+  "produtos_servicos_vinculados": "<type_name>",
+  "centro_custo_id": <centro_custo_id from type>
+}
+```
+
+---
+
+## Conversation Examples — Create Attendance
+
+### Example 1: Full flow — new client
+
+**User:** "Schedule an evaluation session for Maria Silva tomorrow at 3pm"
+
+**Assistant flow:**
+1. Search: `GET /api/clients?search=Maria Silva` → no results
+2. Ask: "I didn't find any client named Maria Silva. Would you like me to create a new client? I'll need their CPF."
+3. User: "Yes, CPF is 123.456.789-00"
+4. Create customer: `POST /api/customers` with `{ nome: "Maria Silva", cpf: "123.456.789-00" }` → `cliente_id: 225`
+5. Attendance type: User said "evaluation", match to "Sessão Avaliação" (id: 11, valor: R$ 50)
+6. Check calendar: `GET /api/calendar?date=2026-02-28` → find slot at 15:00 with professional id 1 (available)
+7. Create: `POST /api/attendances` with `{ cliente_id: 225, profissional_id: 1, data_atendimento: "2026-02-28", hora_atendimento: "15:00", tipo_atendimento_id: 11 }` → `atendimento_id: 7030`
+8. Ask: "Attendance created! Would you like to create a charge for this session?"
+9. User: "Yes, she already paid"
+10. Create charge: `POST /api/charges` with `{ cliente_id: 225, atendimento_id: 7030, valor: 50, data_vencimento: "2026-02-28", profissional_id: 1, pago: 1, produtos_servicos_vinculados: "Sessão Avaliação" }`
+11. Respond: "Done! Charge of R$ 50.00 created and marked as paid."
+
+### Example 2: Existing client, no charge
+
+**User:** "Book a Pilates class for Kelwin next Monday at 9am"
+
+**Assistant flow:**
+1. Search: `GET /api/clients?search=Kelwin` → `{ id: 216, nome: "Kelwin Sanches Savoia" }`
+2. Confirm: "Is this Kelwin Sanches Savoia (ID: 216)?"
+3. User: "Yes"
+4. User didn't specify Pilates frequency. Fetch types: `GET /api/attendance-types` → show active Pilates options
+5. Ask: "Which type? Pilates 1x, 2x, or 3x per week, or Aula Avulsa?"
+6. User: "Aula Avulsa"
+7. Check calendar: `GET /api/calendar?date=2026-03-02` → 09:00 slot available with professional id 2
+8. Create: `POST /api/attendances` → success
+9. Ask: "Would you like to create a charge?"
+10. User: "No, thanks"
+11. Respond: "All set! Kelwin's Aula Avulsa is scheduled for Monday March 2nd at 9:00 AM with Andressa."
+
+### Example 3: Time slot not available
+
+**User:** "Schedule evaluation for João at 7pm on Wednesday"
+
+**Assistant flow:**
+1. Search: Find João → confirm
+2. Type: Sessão Avaliação (id: 11)
+3. Check calendar: `GET /api/calendar?date=2026-03-05` → 19:00 slot shows `available: false` for all professionals
+4. Respond: "Sorry, there's no availability at 7pm on Wednesday. Here are the available times: 15:00 (2 spots), 17:00 (1 spot). Would you like one of these?"
+5. User: "Let's do 5pm"
+6. Continue with the flow at 17:00
+

@@ -6,6 +6,10 @@ import salesRouter from './routes/sales';
 import professionalsRouter from './routes/professionals';
 import attendancesRouter from './routes/attendances';
 import reposicaoRouter from './routes/reposicao';
+import attendanceTypesRouter from "./routes/attendance-types";
+import customersRouter from "./routes/customers";
+import calendarRouter from "./routes/calendar";
+import chargesRouter from "./routes/charges";
 
 const app = express();
 
@@ -26,6 +30,10 @@ app.use('/api/clients', salesRouter);
 app.use('/api/professionals', professionalsRouter);
 app.use('/api/attendances', attendancesRouter);
 app.use('/api/reposicao', reposicaoRouter);
+app.use("/api/attendance-types", attendanceTypesRouter);
+app.use("/api/customers", customersRouter);
+app.use("/api/calendar", calendarRouter);
+app.use("/api/charges", chargesRouter);
 
 // Global error handler
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

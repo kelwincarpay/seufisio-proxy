@@ -112,6 +112,131 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/attendances
+ * Create a new attendance (appointment)
+ *
+ * Body: {
+ *   cliente_id, profissional_id, data_atendimento (YYYY-MM-DD),
+ *   hora_atendimento (HH:mm), tipo_atendimento_id,
+ *   sala_id? (default: 1), duracao_atendimento? (default: 50)
+ * }
+ */
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const {
+      cliente_id,
+      profissional_id,
+      data_atendimento,
+      hora_atendimento: rawHour,
+      tipo_atendimento_id,
+      sala_id,
+      duracao_atendimento,
+    } = req.body;
+
+    if (!cliente_id || !profissional_id || !data_atendimento || !rawHour || !tipo_atendimento_id) {
+      res.status(400).json({
+        error: 'Missing required fields: cliente_id, profissional_id, data_atendimento, hora_atendimento, tipo_atendimento_id',
+      });
+      return;
+    }
+
+    // Normalize hour to HH:mm
+    const [rawH, rawM] = rawHour.split(':').map(Number);
+    const hour = `${String(rawH).padStart(2, '0')}:${String(rawM || 0).padStart(2, '0')}`;
+    const requestedStartTime = `${hour}:00`;
+
+    // Validate slot availability via calendar API
+    console.log(`[Create Attendance] Checking slot availability for professional ${profissional_id} at ${data_atendimento} ${hour}`);
+
+    try {
+      const slots: any[] = await seufisioClient.get('/api/slots/calendario', {
+        data_inicial: `${data_atendimento}T00:00:00`,
+        data_final: `${data_atendimento}T23:59:59`,
+        profissional_id,
+      });
+
+      const matchingSlot = slots.find(
+        (slot: any) =>
+          slot.occur_date === data_atendimento &&
+          slot.start_time === requestedStartTime,
+      );
+
+      if (matchingSlot && matchingSlot.total_booked >= matchingSlot.total_capacity) {
+        res.status(409).json({
+          error: `Slot is fully booked at ${data_atendimento} ${hour} (${matchingSlot.total_booked}/${matchingSlot.total_capacity}). Choose a different time.`,
+        });
+        return;
+      }
+
+      if (matchingSlot) {
+        console.log(
+          `[Create Attendance] Slot available: ${matchingSlot.total_booked}/${matchingSlot.total_capacity} at ${data_atendimento} ${hour}`,
+        );
+      }
+    } catch (err: any) {
+      console.warn(
+        '[Create Attendance] Could not validate slot availability, proceeding anyway:',
+        err?.response?.status || err?.message,
+      );
+    }
+
+    // Calculate end time
+    const sessionDuration = duracao_atendimento || 50;
+    const [h, m] = hour.split(':').map(Number);
+    const endMinutes = m + sessionDuration;
+    const finalHour = `${String(h + Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`;
+
+    const atendimentoData: Record<string, any> = {
+      cliente_id,
+      profissional_id,
+      data_atendimento,
+      duracao_atendimento: sessionDuration,
+      hora_atendimento: hour,
+      hora_final_atendimento: finalHour,
+      sala_id: sala_id || 1,
+      tipo_atendimento_id,
+      convenio_id: null,
+      status_id: 1, // Aguardando Chegar
+      remarcado_id: null,
+      pacote_fixo_id: null,
+      pacote_id: null,
+      is_pacote: null,
+      servico_ciclo_id: null,
+      aula_experimental: false,
+      created_by_user_id: 21714,
+      atualizar_valor_cobranca_ciclo: false,
+    };
+
+    console.log(`[Create Attendance] Creating attendance for client ${cliente_id}`);
+    console.log(`[Create Attendance] Payload: ${JSON.stringify(atendimentoData, null, 2)}`);
+
+    const result = await seufisioClient.post('/api/atendimento', atendimentoData);
+
+    console.log(`[Create Attendance] Success! Attendance ID: ${result.id}`);
+
+    res.json({
+      success: true,
+      message: `Atendimento criado com sucesso para ${data_atendimento} às ${hour}`,
+      atendimento: {
+        id: result.id,
+        data: result.data_atendimento,
+        hora: result.hora_atendimento,
+        horaFinal: result.hora_final_atendimento,
+        profissional_id: result.profissional_id,
+        tipo_atendimento_id: result.tipo_atendimento_id,
+        status: result.status?.nome || 'Aguardando Chegar',
+      },
+    });
+  } catch (error: any) {
+    console.error('[Create Attendance] Error:', error?.response?.data || error.message);
+    res.status(500).json({
+      error: 'Failed to create attendance',
+      details: error?.response?.data || error.message,
+    });
+  }
+});
+
+/**
  * PUT /api/attendances/:id
  * Update an attendance record (e.g. change status, reschedule, etc.)
  * 
