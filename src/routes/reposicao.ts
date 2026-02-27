@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { seufisioClient } from '../services/seufisio-client';
-import { env } from '../config/env';
+import { seufisioClient } from "../services/seufisio-client";
 
 const router = Router();
 
@@ -151,106 +150,56 @@ router.post('/create', async (req: Request, res: Response) => {
       return;
     }
 
-    // Step 3: Calculate week range for the requested date
-    const requestedDate = new Date(`${date}T00:00:00`);
-    const dayOfWeek = requestedDate.getDay();
-    const weekStart = new Date(requestedDate);
-    weekStart.setDate(requestedDate.getDate() - dayOfWeek);
-    weekStart.setHours(0, 0, 0, 0);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
-    weekEnd.setHours(23, 59, 59, 0);
-
-    const startTimestamp = Math.floor(weekStart.getTime() / 1000);
-    const endTimestamp = Math.floor(weekEnd.getTime() / 1000);
-
-    // Step 4: Check availability for each professional
+    // Step 3: Check availability using calendar slots API
     console.log(
-      `[Reposição Create] Checking availability for ${date} at ${hour}`,
+      `[Reposição Create] Checking slot availability for ${date} at ${hour}`,
     );
     let availableProfessional: any = null;
-
-    // Map JS getDay() (0=Sun) to SeuFisio professional schedule field names
-    const dayNames = [
-      "domingo",
-      "segunda",
-      "terca",
-      "quarta",
-      "quinta",
-      "sexta",
-      "sabado",
-    ];
-    const requestedDayName = dayNames[requestedDate.getDay()];
+    const requestedStartTime = `${hour}:00`; // e.g. "08:00:00"
 
     for (const prof of activeProfessionals) {
-      // Fetch full professional details to validate working schedule
-      let profDetails: any = null;
       try {
-        profDetails = await seufisioClient.get(`/api/profissional/${prof.id}`);
+        // Fetch calendar slots for this professional on the requested date
+        const slots: any[] = await seufisioClient.get("/api/slots/calendario", {
+          data_inicial: `${date}T00:00:00`,
+          data_final: `${date}T23:59:59`,
+          profissional_id: prof.id,
+        });
+
+        // Find the slot matching the requested date and hour
+        const matchingSlot = slots.find(
+          (slot: any) =>
+            slot.occur_date === date && slot.start_time === requestedStartTime,
+        );
+
+        if (!matchingSlot) {
+          console.log(
+            `[Reposição Create] Professional ${prof.nome} (${prof.id}): no slot at ${date} ${hour}, skipping`,
+          );
+          continue;
+        }
+
+        const available =
+          matchingSlot.total_booked < matchingSlot.total_capacity;
+        console.log(
+          `[Reposição Create] Professional ${prof.nome} (${prof.id}): ${matchingSlot.total_booked}/${matchingSlot.total_capacity} booked at ${date} ${hour} → ${available ? "AVAILABLE" : "FULL"}`,
+        );
+
+        if (available) {
+          availableProfessional = prof;
+          break;
+        }
       } catch (err: any) {
-        console.warn(
-          `[Reposição Create] Could not fetch details for professional ${prof.nome} (${prof.id}), skipping schedule validation:`,
+        console.error(
+          `[Reposição Create] Failed to fetch calendar for professional ${prof.nome} (${prof.id}):`,
           err?.response?.status || err?.message,
         );
-      }
-
-      if (profDetails) {
-        // Check if professional works on the requested day of the week
-        if (profDetails[requestedDayName] === false) {
-          console.log(
-            `[Reposição Create] Professional ${prof.nome} (${prof.id}): does not work on ${requestedDayName}, skipping`,
-          );
-          continue;
-        }
-
-        // Check if the requested hour falls within their working hours
-        const startWork = profDetails.inicio_atendimento?.substring(0, 5); // e.g. "07:00"
-        const endWork = profDetails.fim_atendimento?.substring(0, 5); // e.g. "21:00"
-        if (startWork && endWork && (hour < startWork || hour >= endWork)) {
-          console.log(
-            `[Reposição Create] Professional ${prof.nome} (${prof.id}): ${hour} is outside working hours ${startWork}-${endWork}, skipping`,
-          );
-          continue;
-        }
-      }
-
-      // Fetch booked events for the week to check slot availability
-      const events: any[] = await seufisioClient.get("/api/basic-events", {
-        profissional_id: prof.id,
-        start: startTimestamp,
-        end: endTimestamp,
-      });
-
-      // Count how many events overlap with the requested hour on the requested date
-      const requestedHourStart = `${date} ${hour}:00`;
-      const [hourPart, minutePart] = hour.split(":").map(Number);
-      const endHour =
-        minutePart + 50 >= 60
-          ? `${String(hourPart + 1).padStart(2, "0")}:${String(minutePart + 50 - 60).padStart(2, "0")}`
-          : `${String(hourPart).padStart(2, "0")}:${String(minutePart + 50).padStart(2, "0")}`;
-      const requestedHourEnd = `${date} ${endHour}:00`;
-
-      // Count events that overlap with the requested time slot
-      const overlappingEvents = events.filter((event: any) => {
-        const eventStart = event.start;
-        const eventEnd = event.end;
-        // Check if the event overlaps with the requested slot
-        return eventStart < requestedHourEnd && eventEnd > requestedHourStart;
-      });
-
-      console.log(
-        `[Reposição Create] Professional ${prof.nome} (${prof.id}): ${overlappingEvents.length}/${env.MAX_ATTENDANCES_PER_HOUR} events at ${date} ${hour}`,
-      );
-
-      if (overlappingEvents.length < env.MAX_ATTENDANCES_PER_HOUR) {
-        availableProfessional = prof;
-        break;
       }
     }
 
     if (!availableProfessional) {
       res.status(409).json({
-        error: `No professional available at ${date} ${hour}. All professionals have reached the maximum of ${env.MAX_ATTENDANCES_PER_HOUR} attendances for this time slot.`,
+        error: `No professional available at ${date} ${hour}. All professionals are fully booked for this time slot.`,
       });
       return;
     }
