@@ -46,11 +46,22 @@ router.get('/count/:clientId', async (req: Request, res: Response) => {
   try {
     const { clientId } = req.params;
 
-    const data = await seufisioClient.get(`/api/cliente/${clientId}/listar-vendas`, {
-      tab: 'ativas',
-      page: 1,
-      per_page: 100,
-    });
+    const [ativasData, inativasData] = await Promise.all([
+      seufisioClient.get(`/api/cliente/${clientId}/listar-vendas`, {
+        tab: 'ativas',
+        page: 1,
+        per_page: 100,
+      }),
+      seufisioClient.get(`/api/cliente/${clientId}/listar-vendas`, {
+        tab: 'inativas',
+        page: 1,
+        per_page: 100,
+      }),
+    ]);
+    const data = {
+      ...ativasData,
+      data: [...(ativasData.data || []), ...(inativasData.data || [])],
+    };
 
     const sales = (data.data || []).map((sale: any) => ({
       id: sale.id,
@@ -108,14 +119,22 @@ router.post('/create', async (req: Request, res: Response) => {
     console.log(
       `[Reposição Create] Getting sale details for client ${clientId}, sale ${saleId}`,
     );
-    const salesData = await seufisioClient.get(
-      `/api/cliente/${clientId}/listar-vendas`,
-      {
+    const [ativasSalesData, inativasSalesData] = await Promise.all([
+      seufisioClient.get(`/api/cliente/${clientId}/listar-vendas`, {
         tab: "ativas",
         page: 1,
         per_page: 100,
-      },
-    );
+      }),
+      seufisioClient.get(`/api/cliente/${clientId}/listar-vendas`, {
+        tab: "inativas",
+        page: 1,
+        per_page: 100,
+      }),
+    ]);
+    const salesData = {
+      ...ativasSalesData,
+      data: [...(ativasSalesData.data || []), ...(inativasSalesData.data || [])],
+    };
 
     const sale = (salesData.data || []).find((s: any) => s.id === saleId);
     if (!sale) {
@@ -331,11 +350,22 @@ router.get('/debug/:clientId/:saleId', async (req: Request, res: Response) => {
     const saleIdNum = parseInt(saleId as string);
 
     // Get sales
-    const salesData = await seufisioClient.get(`/api/cliente/${clientId}/listar-vendas`, {
-      tab: 'ativas',
-      page: 1,
-      per_page: 100,
-    });
+    const [ativasSalesData, inativasSalesData] = await Promise.all([
+      seufisioClient.get(`/api/cliente/${clientId}/listar-vendas`, {
+        tab: 'ativas',
+        page: 1,
+        per_page: 100,
+      }),
+      seufisioClient.get(`/api/cliente/${clientId}/listar-vendas`, {
+        tab: 'inativas',
+        page: 1,
+        per_page: 100,
+      }),
+    ]);
+    const salesData = {
+      ...ativasSalesData,
+      data: [...(ativasSalesData.data || []), ...(inativasSalesData.data || [])],
+    };
 
     const sale = (salesData.data || []).find((s: any) => s.id === saleIdNum);
 
