@@ -992,3 +992,360 @@ POST {{SEUFISIO_PROXY_URL}}/api/charges
 5. User: "Let's do 5pm"
 6. Continue with the flow at 17:00
 
+---
+
+## Plan Schedule APIs
+
+APIs for viewing and updating a client's plan schedule.
+
+### 14. Get Plan Details
+
+Get details of a specific plan (pacote), including the **current schedule** from `inf_renovacao`. Professional IDs are automatically resolved to names.
+
+**Request:**
+```
+GET {{SEUFISIO_PROXY_URL}}/api/plans/:planId
+Authorization: Bearer {{SEUFISIO_API_TOKEN}}
+```
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| planId | number | Yes | The plan/sale ID (from client sales endpoint) |
+
+**Response:**
+```json
+{
+  "id": 17,
+  "cliente_id": 210,
+  "cliente_nome": "Anderson Manuel Souza Mendonça",
+  "data_inicial": "2026-02-26",
+  "qtd_atendimentos_contratados": 100,
+  "qtd_aulas_feitas": 5,
+  "tipo_atendimento_id": 13,
+  "currentSchedule": [
+    {
+      "day": "quinta",
+      "dayLabel": "Quinta",
+      "hora": "12:00",
+      "profissional_id": 1,
+      "profissional_nome": "Priscila Graciele Assis Ferreira Savoia",
+      "sala_id": 1
+    }
+  ]
+}
+```
+
+**Key fields:**
+- `currentSchedule`: Array of active days with their time, professional, and room. Only days that have a schedule are included (inactive days are omitted).
+- `dayLabel`: Human-readable day name in Portuguese (e.g. "Quinta", "Segunda")
+- `profissional_nome`: Resolved professional name (not just the ID)
+
+**Use cases:**
+- Showing the client's current schedule before making changes
+- Verifying what days/times are currently configured
+- Confirming the professional assigned to each day
+
+---
+
+### 15. Update Plan Schedule
+
+**Request:**
+```
+PUT {{SEUFISIO_PROXY_URL}}/api/plans/:planId/schedule
+Authorization: Bearer {{SEUFISIO_API_TOKEN}}
+Content-Type: application/json
+
+{
+  "data_inicio_alteracao": "2026-04-01",
+  "quarta": true,
+  "sexta": true,
+  "hora_quarta": "10:00",
+  "hora_sexta": "13:00",
+  "sala_id_quarta": 1,
+  "sala_id_sexta": 1,
+  "profissional_id_quarta": 1,
+  "profissional_id_sexta": 2
+}
+```
+
+**Parameters (in body):**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| data_inicio_alteracao | string | Yes | Start date for the schedule change (YYYY-MM-DD) |
+| domingo | boolean | No | Whether Sunday is active (default: false) |
+| segunda | boolean | No | Whether Monday is active (default: false) |
+| terca | boolean | No | Whether Tuesday is active (default: false) |
+| quarta | boolean | No | Whether Wednesday is active (default: false) |
+| quinta | boolean | No | Whether Thursday is active (default: false) |
+| sexta | boolean | No | Whether Friday is active (default: false) |
+| sabado | boolean | No | Whether Saturday is active (default: false) |
+| hora_domingo – hora_sabado | string | No | Time for each day in HH:mm format (e.g. "10:00"). Empty string "" for inactive days. |
+| sala_id_domingo – sala_id_sabado | number\|null | No | Room ID for each day. null for inactive days. Default room is 1. |
+| profissional_id_domingo – profissional_id_sabado | number\|null | No | Professional ID for each day. null for inactive days. |
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": { ... }
+}
+```
+
+**Day field naming convention — use Portuguese day names:**
+| Day | Boolean | Hour | Room | Professional |
+|-----|---------|------|------|-------------|
+| Sunday | domingo | hora_domingo | sala_id_domingo | profissional_id_domingo |
+| Monday | segunda | hora_segunda | sala_id_segunda | profissional_id_segunda |
+| Tuesday | terca | hora_terca | sala_id_terca | profissional_id_terca |
+| Wednesday | quarta | hora_quarta | sala_id_quarta | profissional_id_quarta |
+| Thursday | quinta | hora_quinta | sala_id_quinta | profissional_id_quinta |
+| Friday | sexta | hora_sexta | sala_id_sexta | profissional_id_sexta |
+| Saturday | sabado | hora_sabado | sala_id_sabado | profissional_id_sabado |
+
+**Use cases:**
+- Changing the days/times a client attends their regular classes
+- Moving a client from one time slot to another
+- Assigning a different professional to a client's plan
+
+---
+
+## Change Plan Schedule Skill — Step-by-Step Flow
+
+When the user wants to change the schedule (days/hours) for a client's plan, follow this flow:
+
+```
+1. Search for the customer → get clientId
+2. List their active plans → if multiple, ask user which plan to update
+3. Fetch current schedule → show the user the current days/times before changes
+4. Get the desired new schedule from the user → days and times
+5. Auto-assign professionals → check calendar availability for each requested day/time
+6. Update the plan schedule → call the API
+```
+
+---
+
+### Step 1: Find the Customer
+
+Search for the client by name using the client search API.
+
+**Search:**
+```
+GET {{SEUFISIO_PROXY_URL}}/api/clients?search=<name>
+```
+
+**If multiple results:** Ask the user to clarify which client.
+
+**If not found:** Inform the user that no client was found with that name.
+
+---
+
+### Step 2: Get Active Plans & Determine Required Days Per Week
+
+Fetch the client's active sales/plans to identify which plan to update.
+
+```
+GET {{SEUFISIO_PROXY_URL}}/api/clients/:clientId/sales
+```
+
+- If the client has **only 1 active plan**, use that plan automatically.
+- If the client has **more than 1 active plan**, present the plans to the user and ask which one to update. Display the plan name (`tipoAtendimentoNome`), schedule info (`informacoes`), and start date.
+- If the client has **no active plans**, inform the user.
+
+The sale `id` will be used as the `planId` in the API call.
+
+**Extract the required days per week** from the plan's `tipoAtendimentoNome`:
+
+| Plan Name Pattern | Required Days |
+|-------------------|---------------|
+| "Pilates 1x na Semana" | 1 |
+| "Pilates 2x na Semana" | 2 |
+| "Pilates 3x na Semana" | 3 |
+| "Aula Avulsa" | Flexible (any number of days) |
+| Any other plan without "Nx na Semana" | Flexible (any number of days) |
+
+**How to extract:** Look for the pattern `<N>x na Semana` in `tipoAtendimentoNome`. The number before the `x` is the required number of days. If no such pattern exists, the plan is flexible.
+
+Keep this `requiredDays` value for validation in Step 4.
+
+---
+
+### Step 3: Fetch & Display Current Schedule
+
+Before asking for the new schedule, fetch the plan's current schedule and **show it to the user**.
+
+```
+GET {{SEUFISIO_PROXY_URL}}/api/plans/:planId
+```
+
+Present the current schedule clearly, for example:
+
+> "Here is the current schedule for this plan:
+> - **Quinta (Thursday)** at 12:00 with Priscila
+> - **Sexta (Friday)** at 13:00 with Andressa
+>
+> What would you like to change?"
+
+This lets the user see what's currently configured before deciding on changes.
+
+---
+
+### Step 4: Determine & Validate the New Schedule
+
+Ask the user which days and times they want. The user may say things like:
+- "Change to Monday and Wednesday at 9am"
+- "Move from Wednesday 10am to Thursday 11am"
+- "Add Friday at 14:00"
+
+**⚠️ VALIDATE: The number of requested days MUST match the plan's required days per week.**
+
+Count how many days the user is requesting and compare with the `requiredDays` from Step 2:
+- If the plan requires a specific number (e.g. "Pilates 2x na Semana" → 2 days) and the user provides a different number, **do NOT proceed**. Instead, inform them:
+  - Too few days: "This plan requires 2 classes per week, but you only specified 1 day. Please provide 2 days."
+  - Too many days: "This plan requires 2 classes per week, but you specified 3 days. Please provide exactly 2 days."
+- If the plan is flexible ("Aula Avulsa" or no frequency pattern), accept any number of days.
+
+Once validated, map the request to specific days and times. Remember:
+
+- **ALL 7 days must be specified** in the API payload. Days not being used should have their boolean set to `false`, hour set to `""`, and IDs set to `null`.
+- The `data_inicio_alteracao` should be the date from which the new schedule takes effect. If the user doesn't specify, use **today's date**.
+
+---
+
+### Step 5: Auto-Assign Professionals
+
+For **each active day** in the new schedule, find an available professional at the requested time using the calendar API — the same approach used in the reposição flow.
+
+For each day/time:
+1. Pick a representative future date for that weekday (e.g., the next occurrence of that weekday from `data_inicio_alteracao`)
+2. Query the calendar for that date:
+   ```
+   GET {{SEUFISIO_PROXY_URL}}/api/calendar?date=<YYYY-MM-DD>
+   ```
+3. Find a slot at the requested time where `available` is `true`
+4. Use the `profissional_id` from that available slot
+
+**If no professional is available** at a requested day/time, inform the user and suggest alternative times from the calendar response.
+
+**Important:** Each day can have a **different** professional. Assign whichever professional has availability at each specific day/time.
+
+---
+
+### Step 6: Update the Plan Schedule
+
+With all information gathered, build the complete payload and call the API:
+
+```
+PUT {{SEUFISIO_PROXY_URL}}/api/plans/:planId/schedule
+{
+  "data_inicio_alteracao": "<YYYY-MM-DD>",
+  "segunda": true,
+  "quarta": true,
+  "hora_segunda": "09:00",
+  "hora_quarta": "09:00",
+  "sala_id_segunda": 1,
+  "sala_id_quarta": 1,
+  "profissional_id_segunda": 1,
+  "profissional_id_quarta": 2,
+  "domingo": false,
+  "terca": false,
+  "quinta": false,
+  "sexta": false,
+  "sabado": false,
+  "hora_domingo": "",
+  "hora_terca": "",
+  "hora_quinta": "",
+  "hora_sexta": "",
+  "hora_sabado": "",
+  "sala_id_domingo": null,
+  "sala_id_terca": null,
+  "sala_id_quinta": null,
+  "sala_id_sexta": null,
+  "sala_id_sabado": null,
+  "profissional_id_domingo": null,
+  "profissional_id_terca": null,
+  "profissional_id_quinta": null,
+  "profissional_id_sexta": null,
+  "profissional_id_sabado": null
+}
+```
+
+Confirm success: "Plan schedule updated! Starting from [date], [client name] will attend on [days] at [times] with [professionals]."
+
+---
+
+## Conversation Examples — Change Plan Schedule
+
+### Example 1: Client wants to change days and times
+
+**User:** "Change Kelwin's schedule to Monday and Wednesday at 9am"
+
+**Assistant flow:**
+1. Search: `GET /api/clients?search=Kelwin` → `{ id: 216, nome: "Kelwin Sanches Savoia" }`
+2. Sales: `GET /api/clients/216/sales` → 1 active plan (id: 15, "Aula Avulsa", currently "Quarta às 11:00, Sexta às 13:00")
+3. Only 1 plan → use it automatically
+4. Fetch current schedule: `GET /api/plans/15` → `currentSchedule: [{ dayLabel: "Quarta", hora: "11:00", profissional_nome: "Priscila" }, { dayLabel: "Sexta", hora: "13:00", profissional_nome: "Andressa" }]`
+5. Show: "Current schedule: Quarta at 11:00 with Priscila, Sexta at 13:00 with Andressa. You want to change to Monday and Wednesday at 9am — proceeding."
+6. Auto-assign professionals:
+   - Monday 09:00: `GET /api/calendar?date=2026-04-07` → slot at 09:00 available with professional 1 (Priscila)
+   - Wednesday 09:00: `GET /api/calendar?date=2026-04-02` → slot at 09:00 available with professional 2 (Andressa)
+7. Update: `PUT /api/plans/15/schedule` with `{ data_inicio_alteracao: "2026-04-01", segunda: true, quarta: true, hora_segunda: "09:00", hora_quarta: "09:00", ... }`
+8. Respond: "Done! Starting from April 1st, Kelwin will attend on Monday at 9:00 AM with Priscila and Wednesday at 9:00 AM with Andressa."
+
+### Example 2: Client with multiple active plans
+
+**User:** "Move Adriana's Pilates to Tuesday and Thursday at 10am"
+
+**Assistant flow:**
+1. Search: `GET /api/clients?search=Adriana` → `{ id: 71, nome: "Adriana Lima de Oliveira" }`
+2. Sales: `GET /api/clients/71/sales` → 2 active plans:
+   - id 8: "Pilates 2x na Semana" (Seg 09:00, Qua 09:00)
+   - id 12: "Aula Avulsa" (Sex 14:00)
+3. Ask: "Adriana has 2 active plans: 1) Pilates 2x na Semana (Mon 9am, Wed 9am) 2) Aula Avulsa (Fri 2pm). Which plan do you want to update?"
+4. User: "The Pilates one"
+5. Fetch current schedule: `GET /api/plans/8` → `currentSchedule: [{ dayLabel: "Segunda", hora: "09:00", profissional_nome: "Priscila" }, { dayLabel: "Quarta", hora: "09:00", profissional_nome: "Priscila" }]`
+6. Show: "Current schedule: Segunda at 09:00 with Priscila, Quarta at 09:00 with Priscila. Changing to Tuesday and Thursday at 10am."
+7. Validate: 2 days requested matches "2x na Semana" ✓
+8. Auto-assign professionals for Tuesday 10:00 and Thursday 10:00
+9. Update plan id 8 with the new schedule
+10. Respond: "Done! Adriana's Pilates plan is now on Tuesday and Thursday at 10:00 AM."
+
+### Example 3: No availability at requested time
+
+**User:** "Change Maria's schedule to Wednesday at 7pm"
+
+**Assistant flow:**
+1. Search and find Maria → get her plan (id: 20, "Pilates 1x na Semana")
+2. Fetch current schedule: `GET /api/plans/20` → `currentSchedule: [{ dayLabel: "Segunda", hora: "10:00", profissional_nome: "Andressa" }]`
+3. Show: "Current schedule: Segunda at 10:00 with Andressa. You want to change to Wednesday at 7pm."
+4. Validate: 1 day ✓ matches "1x na Semana"
+5. Check calendar for Wednesday at 19:00 → no availability (all professionals full)
+6. Respond: "Sorry, there's no availability at 7pm on Wednesday. Available times: 15:00 (2 spots with Priscila), 17:00 (1 spot with Andressa). Would you like one of these instead?"
+7. User: "Let's do 5pm"
+8. Continue with 17:00
+
+### Example 4: Client has no active plans
+
+**User:** "Change Bruno's class times"
+
+**Assistant flow:**
+1. Search: Find Bruno → id 46
+2. Sales: `GET /api/clients/46/sales` → no active plans
+3. Respond: "Bruno doesn't have any active plans to update."
+
+### Example 5: Day count mismatch with plan frequency
+
+**User:** "Change Adriana's Pilates to Monday, Wednesday, and Friday at 10am"
+
+**Assistant flow:**
+1. Search: `GET /api/clients?search=Adriana` → `{ id: 71, nome: "Adriana Lima de Oliveira" }`
+2. Sales: `GET /api/clients/71/sales` → plan id 8: "Pilates 2x na Semana"
+3. Fetch current schedule: `GET /api/plans/8` → `currentSchedule: [{ dayLabel: "Segunda", hora: "09:00" }, { dayLabel: "Quarta", hora: "09:00" }]`
+4. Show: "Current schedule: Segunda at 09:00, Quarta at 09:00."
+5. Extract frequency: "2x na Semana" → `requiredDays = 2`
+6. User requested 3 days (Monday, Wednesday, Friday) but the plan requires 2 days
+7. Respond: "Adriana's plan is 'Pilates 2x na Semana', which requires exactly 2 days per week. You specified 3 days (Monday, Wednesday, Friday). Please choose only 2 days."
+8. User: "Then Monday and Wednesday"
+9. Validate: 2 days ✓ matches the plan
+10. Continue with auto-assigning professionals and updating the schedule
+
