@@ -51,7 +51,7 @@ Auth errors:
             → attendance created in SeuFisio
 
 5. (Later) Patient views bookings and may cancel
-      ├── GET /api/attendances/report?client_id=...   (list bookings)
+      ├── GET /api/attendances/client/:clientId       (normalized list + cancellable flag)
       └── POST /api/attendances/:id/cancel
             ├── 200 → cancelled
             └── 422 → inside the 8h window, not allowed
@@ -241,18 +241,54 @@ Errors:
 
 ---
 
-### 4.5 List a patient's bookings (to show / choose what to cancel)
+### 4.5 List a patient's bookings ("meus agendamentos")
 
+**Preferred — normalized, cancel-ready:**
+```
+GET /api/attendances/client/:clientId
+```
+Query params (all optional):
+- `from` — `YYYY-MM-DD`, default **today** (studio time)
+- `to` — `YYYY-MM-DD`, default `from + 60 days`
+- `upcoming` — `1` (default) returns only future classes; `0` returns all in range
+
+**200**
+```json
+{
+  "client_id": 216,
+  "from": "2026-07-02",
+  "to": "2026-08-31",
+  "upcoming_only": true,
+  "count": 2,
+  "attendances": [
+    {
+      "id": 6965,
+      "data_atendimento": "2026-07-10",
+      "hora_atendimento": "08:00",
+      "profissional_id": 7,
+      "profissional_nome": "João Prof",
+      "tipo_atendimento_id": 13,
+      "tipo_nome": "Totalpass",
+      "status_id": 1,
+      "status_nome": "Aguardando Chegar",
+      "hours_until_class": 26.5,
+      "cancellable": true
+    }
+  ]
+}
+```
+- Sorted chronologically.
+- `cancellable` = class is at least 8h away → use it to enable/disable the cancel button directly.
+- Use `id` for the cancel call (4.6).
+
+Errors: `400` (missing `clientId`), `500`.
+
+**Raw passthrough (advanced / reports):**
 ```
 GET /api/attendances/report?client_id=<id>&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
 ```
-
 Optional: `page` (default 1), `rows_per_page` (default 100), `only_absences` (0|1), `only_repositions` (0|1).
-
-Returns the SeuFisio attendance report for that client/date range (raw passthrough). Use it to list
-upcoming classes with their attendance `id`, date, and time so the patient can select one to cancel.
-
-Errors: `400` (missing `client_id`/dates), `500`.
+Returns the raw SeuFisio attendance report unmodified. Prefer `/client/:clientId` for the site UI.
 
 ---
 
