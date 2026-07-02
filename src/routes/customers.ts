@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { seufisioClient } from '../services/seufisio-client';
+import { getClientDetail } from '../services/client-attendances';
 
 const router = Router();
 
@@ -72,7 +73,7 @@ router.get('/', async (req: Request, res: Response) => {
     const matches = await Promise.all(
       results.map(async (item: any) => {
         try {
-          const detail = await seufisioClient.get(`/api/cliente/${item.id}`);
+          const detail = await getClientDetail(item.id);
           return toCustomer(detail);
         } catch {
           // Fall back to the list fields if the detail fetch fails.

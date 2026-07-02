@@ -19,6 +19,17 @@ interface EnvConfig {
   // status_id used to mark an attendance cancelled. Optional: if unset it is
   // resolved by matching the status name (contains "cancel").
   CANCELLED_STATUS_ID: number | null;
+  // Supabase (WhatsApp reminder preferences persistence). Optional: when unset,
+  // the notifications routes and reminder cron stay disabled.
+  SUPABASE_URL: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
+  // Evolution API (WhatsApp sender). Optional: required only to actually send.
+  EVOLUTION_API_URL: string;
+  EVOLUTION_API_KEY: string;
+  EVOLUTION_INSTANCE: string;
+  // Reminder cron schedule + how many days ahead to scan for classes.
+  NOTIFICATIONS_CRON: string;
+  NOTIFY_LOOKAHEAD_DAYS: number;
 }
 
 function getEnvVar(key: string, required = true): string {
@@ -41,4 +52,11 @@ export const env: EnvConfig = {
   TIPO_WELLHUB_ID: process.env.TIPO_WELLHUB_ID ? parseInt(process.env.TIPO_WELLHUB_ID, 10) : null,
   CANCELLATION_MIN_HOURS: parseInt(process.env.CANCELLATION_MIN_HOURS || '8', 10),
   CANCELLED_STATUS_ID: process.env.CANCELLED_STATUS_ID ? parseInt(process.env.CANCELLED_STATUS_ID, 10) : null,
+  SUPABASE_URL: getEnvVar('SUPABASE_URL', false),
+  SUPABASE_SERVICE_ROLE_KEY: getEnvVar('SUPABASE_SERVICE_ROLE_KEY', false),
+  EVOLUTION_API_URL: getEnvVar('EVOLUTION_API_URL', false),
+  EVOLUTION_API_KEY: getEnvVar('EVOLUTION_API_KEY', false),
+  EVOLUTION_INSTANCE: getEnvVar('EVOLUTION_INSTANCE', false),
+  NOTIFICATIONS_CRON: getEnvVar('NOTIFICATIONS_CRON', false) || '*/30 * * * *',
+  NOTIFY_LOOKAHEAD_DAYS: parseInt(process.env.NOTIFY_LOOKAHEAD_DAYS || '2', 10),
 };

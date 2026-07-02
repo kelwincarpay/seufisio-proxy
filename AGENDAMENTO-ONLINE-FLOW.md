@@ -360,3 +360,46 @@ Professionals: `GET /api/professionals` → `{ professionals: [{ id, nome, ativo
 - [ ] Decide whether the **new-clients-can't-use-apps** rule needs a hard server-side block in the
       proxy, or stays a website-only gate.
 - [ ] Confirm the proxy host/URL and issue the website backend its `API_SECRET_TOKEN`.
+
+---
+
+## 8. WhatsApp class reminders (opt-in)
+
+Patients can opt in to a WhatsApp reminder before each class and choose how many minutes ahead.
+Preferences are stored in **Supabase**; a cron in this proxy runs every 30 min, checks each opted-in
+client's upcoming classes, and sends the reminder via the **Evolution API**. Requires the
+`SUPABASE_*` and `EVOLUTION_*` env vars — without them these routes return `503` and the cron is off.
+
+### 8.1 Save / update preference
+```
+POST /api/notifications/preferences
+```
+```json
+{
+  "cliente_id": 169,            // required (SeuFisio client id)
+  "notify_minutes_before": 60,  // optional, default 60
+  "phone": "11999998888",       // optional — if omitted, pulled from SeuFisio detail
+  "enabled": true               // optional, default true
+}
+```
+Upserts by `cliente_id`. Phone is normalized to digits with the `55` country code.
+
+### 8.2 Read / update / disable
+```
+GET    /api/notifications/preferences/:clienteId
+PUT    /api/notifications/preferences/:clienteId   # partial: phone / notify_minutes_before / enabled
+DELETE /api/notifications/preferences/:clienteId   # soft-disable (enabled=false)
+```
+
+### 8.3 How the reminder fires
+- Cron (`NOTIFICATIONS_CRON`, default `*/30 * * * *`) scans classes in the next `NOTIFY_LOOKAHEAD_DAYS` (default 2).
+- A reminder is sent once when `now >= class_start − notify_minutes_before` and the class hasn't started.
+- Dedup: one **sent** reminder per attendance (a `notification_log` row); failed sends retry next run.
+- Granularity: with a 30-min cron, the reminder goes out at the first tick after the window opens
+  (up to ~30 min later than the exact minute) — acceptable for a reminder.
+
+### 8.4 Testing
+```
+POST /api/notifications/run-sweep   # runs one sweep immediately, returns { prefs, checked, sent, skipped, failed }
+```
+Test with your own number first (set a large `notify_minutes_before` so an upcoming class qualifies).
