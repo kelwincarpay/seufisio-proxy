@@ -4,6 +4,56 @@ import { seufisioClient } from '../services/seufisio-client';
 const router = Router();
 
 /**
+ * GET /api/customers?cpf=<cpf>
+ * Look up a client by CPF (patient self-identification on the booking site).
+ *
+ * Uses SeuFisio's expanded-identifier search (busca_identificadores_ampliada).
+ * The list response does not echo the CPF back, but filtering by it confirms
+ * identity and returns the client id needed for booking.
+ *
+ * Responds 404 when no active client matches the CPF, so the site can then
+ * offer registration via POST /api/customers.
+ */
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const cpf = (req.query.cpf as string || '').trim();
+
+    if (!cpf) {
+      res.status(400).json({ error: 'Missing required query parameter: cpf' });
+      return;
+    }
+
+    const data = await seufisioClient.get('/api/cliente', {
+      page: 1,
+      'filtro_avancado[busca_identificadores_ampliada]': true,
+      'filtro_avancado[situacao]': 2, // Active clients only
+      'filtro_avancado[cpf]': cpf,
+      'filtro_avancado[telefone]': '',
+      'filtro_avancado[tipo_cliente]': '',
+      'filtro_avancado[pacote_ativo]': '',
+    });
+
+    const matches = (data.data || []).map((client: any) => ({
+      id: client.id,
+      nome: client.nome,
+      situacao: client.str_situacao,
+      tipo_cliente: client.tipo_cliente,
+    }));
+
+    if (matches.length === 0) {
+      res.status(404).json({ error: 'No active client found for this CPF', cpf });
+      return;
+    }
+
+    // Return the first match as the resolved client, plus any others for disambiguation.
+    res.json({ client: matches[0], matches });
+  } catch (error: any) {
+    console.error('[Customer Lookup] Error:', error?.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to look up customer by CPF' });
+  }
+});
+
+/**
  * POST /api/customers
  * Create a new customer (cliente) in SeuFisio
  *

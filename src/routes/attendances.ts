@@ -1,7 +1,71 @@
 import { Router, Request, Response } from 'express';
 import { seufisioClient } from '../services/seufisio-client';
+import { env } from '../config/env';
 
 const router = Router();
+
+// Studio timezone is fixed UTC-3 (America/Sao_Paulo, no DST since 2019).
+const STUDIO_UTC_OFFSET = '-03:00';
+
+/** Lowercase + strip accents, for tolerant name matching. */
+function deaccent(s: string): string {
+  return (s || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Resolve an aggregator app source to its tipo_atendimento_id.
+ * Prefers the env override; falls back to matching the tipo name in SeuFisio.
+ *   totalpass -> "TotalPass"
+ *   wellhub   -> "Sessão Avulsa"
+ */
+async function resolveTipoAtendimentoId(source: string): Promise<number> {
+  const normalized = deaccent(source);
+
+  if (normalized === 'totalpass') {
+    if (env.TIPO_TOTALPASS_ID) return env.TIPO_TOTALPASS_ID;
+    return findTipoIdByName(['totalpass', 'total pass']);
+  }
+  if (normalized === 'wellhub') {
+    if (env.TIPO_WELLHUB_ID) return env.TIPO_WELLHUB_ID;
+    return findTipoIdByName(['sessao avulsa', 'avulsa']);
+  }
+  throw new Error(`Unknown source "${source}" (expected "totalpass" or "wellhub")`);
+}
+
+async function findTipoIdByName(candidates: string[]): Promise<number> {
+  const types: any[] = await seufisioClient.get('/api/tipo-atendimento', { rowsPerPage: 'all' });
+  const wanted = candidates.map(deaccent);
+  const match = (types || [])
+    .filter((t: any) => t.ativo)
+    .find((t: any) => {
+      const name = deaccent(t.nome);
+      return wanted.some((w) => name === w || name.includes(w));
+    });
+  if (!match) {
+    throw new Error(
+      `No active tipo_atendimento found matching ${JSON.stringify(candidates)}. ` +
+        `Set the TIPO_TOTALPASS_ID / TIPO_WELLHUB_ID env var explicitly.`,
+    );
+  }
+  return match.id;
+}
+
+async function resolveCancelledStatusId(): Promise<number> {
+  if (env.CANCELLED_STATUS_ID) return env.CANCELLED_STATUS_ID;
+  const statuses: any = await seufisioClient.get('/api/status', { rowsPerPage: 'all' });
+  const list: any[] = Array.isArray(statuses) ? statuses : statuses?.data || [];
+  const match = list.find((s: any) => deaccent(s.nome).includes('cancel'));
+  if (!match) {
+    throw new Error(
+      'Could not resolve a cancelled status. Set the CANCELLED_STATUS_ID env var explicitly.',
+    );
+  }
+  return match.id;
+}
 
 /**
  * GET /api/attendances?profissional_id=<id>&start=<unix>&end=<unix>
@@ -117,7 +181,9 @@ router.get('/:id', async (req: Request, res: Response) => {
  *
  * Body: {
  *   cliente_id, profissional_id, data_atendimento (YYYY-MM-DD),
- *   hora_atendimento (HH:mm), tipo_atendimento_id,
+ *   hora_atendimento (HH:mm),
+ *   // Provide EITHER tipo_atendimento_id OR source (proxy resolves the id):
+ *   tipo_atendimento_id?, source? ("totalpass" | "wellhub"),
  *   sala_id? (default: 1), duracao_atendimento? (default: 50)
  * }
  */
@@ -128,16 +194,35 @@ router.post('/', async (req: Request, res: Response) => {
       profissional_id,
       data_atendimento,
       hora_atendimento: rawHour,
-      tipo_atendimento_id,
+      tipo_atendimento_id: rawTipoId,
+      source,
       sala_id,
       duracao_atendimento,
     } = req.body;
 
-    if (!cliente_id || !profissional_id || !data_atendimento || !rawHour || !tipo_atendimento_id) {
+    if (!cliente_id || !profissional_id || !data_atendimento || !rawHour) {
       res.status(400).json({
-        error: 'Missing required fields: cliente_id, profissional_id, data_atendimento, hora_atendimento, tipo_atendimento_id',
+        error: 'Missing required fields: cliente_id, profissional_id, data_atendimento, hora_atendimento',
       });
       return;
+    }
+
+    // Resolve tipo_atendimento_id: explicit id wins, otherwise map from source.
+    let tipo_atendimento_id = rawTipoId;
+    if (!tipo_atendimento_id) {
+      if (!source) {
+        res.status(400).json({
+          error: 'Provide either tipo_atendimento_id or source ("totalpass" | "wellhub")',
+        });
+        return;
+      }
+      try {
+        tipo_atendimento_id = await resolveTipoAtendimentoId(source);
+        console.log(`[Create Attendance] Resolved source "${source}" -> tipo_atendimento_id ${tipo_atendimento_id}`);
+      } catch (err: any) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
     }
 
     // Normalize hour to HH:mm
@@ -364,6 +449,79 @@ router.put('/:id', async (req: Request, res: Response) => {
     console.error('[Attendance Update] Error:', error?.response?.data || error.message);
     res.status(500).json({
       error: 'Failed to update attendance',
+      details: error?.response?.data || error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/attendances/:id/cancel
+ * Cancel a booking — allowed only when the class is at least
+ * CANCELLATION_MIN_HOURS (default 8h) away, measured in studio local time
+ * (America/Sao_Paulo, UTC-3).
+ *
+ * Returns 422 when inside the cutoff window.
+ */
+router.post('/:id/cancel', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      res.status(400).json({ error: 'Missing attendance id' });
+      return;
+    }
+
+    // Fetch the full attendance (also gives us the object to PUT back).
+    const attendance: Record<string, any> = await seufisioClient.get(`/api/atendimento/${id}`);
+
+    const date: string = attendance.data_atendimento; // YYYY-MM-DD
+    const hour: string = attendance.hora_atendimento; // HH:mm
+    if (!date || !hour) {
+      res.status(422).json({ error: 'Attendance has no scheduled date/time; cannot evaluate cancellation window' });
+      return;
+    }
+
+    // Build the class start as an absolute instant in studio local time.
+    const [h, m] = hour.split(':');
+    const classStart = new Date(
+      `${date}T${h.padStart(2, '0')}:${(m || '0').padStart(2, '0')}:00${STUDIO_UTC_OFFSET}`,
+    );
+    if (isNaN(classStart.getTime())) {
+      res.status(422).json({ error: `Could not parse class datetime from ${date} ${hour}` });
+      return;
+    }
+
+    const hoursUntil = (classStart.getTime() - Date.now()) / 3_600_000;
+
+    if (hoursUntil < env.CANCELLATION_MIN_HOURS) {
+      res.status(422).json({
+        error: `Cancellation not allowed: class starts in ${hoursUntil.toFixed(1)}h, which is less than the ${env.CANCELLATION_MIN_HOURS}h minimum.`,
+        class_start: `${date} ${hour}`,
+        hours_until_class: Number(hoursUntil.toFixed(2)),
+        min_hours: env.CANCELLATION_MIN_HOURS,
+      });
+      return;
+    }
+
+    // Resolve the cancelled status and PUT the full merged object back.
+    const cancelledStatusId = await resolveCancelledStatusId();
+    const mergedPayload = { ...attendance, status_id: cancelledStatusId };
+
+    console.log(`[Attendance Cancel] Cancelling ${id} (status_id ${cancelledStatusId}), class in ${hoursUntil.toFixed(1)}h`);
+
+    const data = await seufisioClient.put(`/api/atendimento/${id}`, mergedPayload);
+
+    res.json({
+      success: true,
+      message: `Atendimento ${id} cancelado com sucesso`,
+      hours_until_class: Number(hoursUntil.toFixed(2)),
+      status_id: cancelledStatusId,
+      atendimento: data,
+    });
+  } catch (error: any) {
+    console.error('[Attendance Cancel] Error:', error?.response?.data || error.message);
+    res.status(500).json({
+      error: 'Failed to cancel attendance',
       details: error?.response?.data || error.message,
     });
   }
