@@ -223,10 +223,13 @@ router.get('/client/:clientId', async (req: Request, res: Response) => {
     const to = (req.query.to as string) || addDays(from, 60);
     const upcomingOnly = req.query.upcoming !== '0'; // default: upcoming only
 
+    // NOTE: the report does NOT accept rowsPerPage='all' — it silently falls back
+    // to 1 row per page (last_page = total). Use a large numeric page size so a
+    // client's attendances in the window come back in a single page.
     const data: any = await seufisioClient.get('/api/relatorio/atendimento', {
       descending: 'false',
       page: 1,
-      rowsPerPage: 'all',
+      rowsPerPage: 1000,
       filtro_data_atendimento_inicial: from,
       filtro_data_atendimento_final: to,
       filtro_ausencias_sem_reposicoes: '0',
@@ -235,21 +238,6 @@ router.get('/client/:clientId', async (req: Request, res: Response) => {
     });
 
     const rows: any[] = Array.isArray(data) ? data : data?.data || data?.items || [];
-
-    // Temporary: ?debug=1 surfaces the raw upstream shape so we can lock the mapping.
-    if (req.query.debug === '1') {
-      res.json({
-        from,
-        to,
-        raw_is_array: Array.isArray(data),
-        raw_top_level_keys: data && typeof data === 'object' && !Array.isArray(data) ? Object.keys(data) : null,
-        extracted_row_count: rows.length,
-        first_row_keys: rows[0] ? Object.keys(rows[0]) : null,
-        sample_rows: rows.slice(0, 3),
-      });
-      return;
-    }
-
     let attendances = rows.map(normalizeAttendance);
 
     if (upcomingOnly) {
