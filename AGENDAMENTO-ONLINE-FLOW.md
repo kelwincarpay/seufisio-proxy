@@ -91,12 +91,31 @@ GET /api/customers?cpf=<cpf>
 **200 — found**
 ```json
 {
-  "client": { "id": 123, "nome": "Maria Silva", "situacao": "Ativo", "tipo_cliente": 2 },
-  "matches": [ { "id": 123, "nome": "Maria Silva", "situacao": "Ativo", "tipo_cliente": 2 } ]
+  "client": {
+    "id": 123,
+    "nome": "Maria Silva",
+    "cpf": "431.474.308-55",
+    "email": "maria@x.com",
+    "telefone": "11999998888",
+    "data_nascimento": "1990-05-12",
+    "situacao": "Ativo",
+    "tipo_cliente": 2,
+    "gympass_token": null,
+    "total_pass_token": null
+  },
+  "matches": [ { "...": "same shape, one per match" } ]
 }
 ```
-Use `client.id` as `cliente_id` in later steps. `matches` holds any additional hits (rare) for
-disambiguation.
+Use `client.id` as `cliente_id` in later steps. The CPF filter response itself only returns
+`id`/`nome`, so the proxy enriches each match with the **full client detail**
+(`GET /api/cliente/:id`) to fill in `cpf`, `email`, `telefone`, etc. `matches` holds any additional
+hits (rare) for disambiguation. Fields the client hasn't filled in come back as `""` (or `null` for
+`data_nascimento`).
+
+**`gympass_token` / `total_pass_token`** come from the detail record and indicate whether the
+patient is linked to an aggregator app: `gympass_token` non-null → **Gympass/Wellhub** member,
+`total_pass_token` non-null → **Totalpass** member. Both `null` → no app link. The site can use
+these to pre-select the booking `source` (or to decide who is an existing app client).
 
 **404 — not found** → send the patient to registration (4.2)
 ```json

@@ -4,12 +4,40 @@ import { seufisioClient } from '../services/seufisio-client';
 const router = Router();
 
 /**
+ * Map a full SeuFisio client detail record to the fields the booking site needs.
+ */
+function toCustomer(detail: any) {
+  return {
+    id: detail.id,
+    nome: first(detail.nome, detail.nome_registro),
+    cpf: first(detail.cpf, detail.documento),
+    email: first(detail.email, detail.email_principal),
+    telefone: first(detail.telefone, detail.telefone_2, detail.celular),
+    data_nascimento: first(detail.data_nascimento, detail.nascimento) || null,
+    situacao: first(detail.str_situacao) || detail.situacao,
+    tipo_cliente: detail.tipo_cliente,
+    // Aggregator-app tokens (null when the client is not linked to that app).
+    gympass_token: detail.gympass_token ?? null,
+    total_pass_token: detail.total_pass_token ?? null,
+  };
+}
+
+function first(...values: any[]): string {
+  for (const v of values) {
+    const s = v != null ? String(v).trim() : '';
+    if (s) return s;
+  }
+  return '';
+}
+
+/**
  * GET /api/customers?cpf=<cpf>
  * Look up a client by CPF (patient self-identification on the booking site).
  *
  * Uses SeuFisio's expanded-identifier search (busca_identificadores_ampliada).
- * The list response does not echo the CPF back, but filtering by it confirms
- * identity and returns the client id needed for booking.
+ * The list response does not echo the CPF or contact info, so each match is
+ * enriched with the full client detail (GET /api/cliente/:id) — returning cpf,
+ * email, telefone, etc.
  *
  * Responds 404 when no active client matches the CPF, so the site can then
  * offer registration via POST /api/customers.
@@ -33,17 +61,25 @@ router.get('/', async (req: Request, res: Response) => {
       'filtro_avancado[pacote_ativo]': '',
     });
 
-    const matches = (data.data || []).map((client: any) => ({
-      id: client.id,
-      nome: client.nome,
-      situacao: client.str_situacao,
-      tipo_cliente: client.tipo_cliente,
-    }));
+    const results = data.data || [];
 
-    if (matches.length === 0) {
+    if (results.length === 0) {
       res.status(404).json({ error: 'No active client found for this CPF', cpf });
       return;
     }
+
+    // The list response lacks CPF/contact info — fetch full detail for each match.
+    const matches = await Promise.all(
+      results.map(async (item: any) => {
+        try {
+          const detail = await seufisioClient.get(`/api/cliente/${item.id}`);
+          return toCustomer(detail);
+        } catch {
+          // Fall back to the list fields if the detail fetch fails.
+          return toCustomer(item);
+        }
+      }),
+    );
 
     // Return the first match as the resolved client, plus any others for disambiguation.
     res.json({ client: matches[0], matches });
