@@ -235,6 +235,21 @@ router.get('/client/:clientId', async (req: Request, res: Response) => {
     });
 
     const rows: any[] = Array.isArray(data) ? data : data?.data || data?.items || [];
+
+    // Temporary: ?debug=1 surfaces the raw upstream shape so we can lock the mapping.
+    if (req.query.debug === '1') {
+      res.json({
+        from,
+        to,
+        raw_is_array: Array.isArray(data),
+        raw_top_level_keys: data && typeof data === 'object' && !Array.isArray(data) ? Object.keys(data) : null,
+        extracted_row_count: rows.length,
+        first_row_keys: rows[0] ? Object.keys(rows[0]) : null,
+        sample_rows: rows.slice(0, 3),
+      });
+      return;
+    }
+
     let attendances = rows.map(normalizeAttendance);
 
     if (upcomingOnly) {
