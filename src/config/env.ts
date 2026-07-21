@@ -57,6 +57,6 @@ export const env: EnvConfig = {
   EVOLUTION_API_URL: getEnvVar('EVOLUTION_API_URL', false),
   EVOLUTION_API_KEY: getEnvVar('EVOLUTION_API_KEY', false),
   EVOLUTION_INSTANCE: getEnvVar('EVOLUTION_INSTANCE', false),
-  NOTIFICATIONS_CRON: getEnvVar('NOTIFICATIONS_CRON', false) || '*/30 * * * *',
+  NOTIFICATIONS_CRON: getEnvVar('NOTIFICATIONS_CRON', false) || '*/15 * * * *',
   NOTIFY_LOOKAHEAD_DAYS: parseInt(process.env.NOTIFY_LOOKAHEAD_DAYS || '2', 10),
 };
