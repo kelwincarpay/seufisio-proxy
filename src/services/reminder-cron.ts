@@ -41,6 +41,14 @@ export interface SweepSummary {
   skipped: number;
   failed: number;
   error?: string;
+  dry_run?: boolean;
+  would_send?: Array<{
+    cliente_id: number;
+    atendimento_id: number | null;
+    phone: string;
+    class_start: string;
+    message: string;
+  }>;
 }
 
 /**
@@ -48,9 +56,17 @@ export interface SweepSummary {
  * "notify_minutes_before" window has been reached and send a WhatsApp reminder
  * once. Dedup relies on a "sent" row in notification_log (partial unique index),
  * so failed attempts retry on the next run.
+ *
+ * With { dryRun: true } it resolves recipients/messages but does NOT send or
+ * write to the DB — returns what it *would* send in `would_send`.
  */
-export async function runReminderSweep(): Promise<SweepSummary> {
+export async function runReminderSweep(opts: { dryRun?: boolean } = {}): Promise<SweepSummary> {
+  const dryRun = Boolean(opts.dryRun);
   const summary: SweepSummary = { prefs: 0, checked: 0, sent: 0, skipped: 0, failed: 0 };
+  if (dryRun) {
+    summary.dry_run = true;
+    summary.would_send = [];
+  }
 
   const supabase = getSupabase();
   if (!supabase) {
@@ -128,6 +144,18 @@ export async function runReminderSweep(): Promise<SweepSummary> {
         }
 
         const message = buildMessage(name, a.tipo_nome, a.data_atendimento, a.hora_atendimento);
+
+        // Dry-run: report the resolved recipient/message without sending or writing.
+        if (dryRun) {
+          summary.would_send!.push({
+            cliente_id: clienteId,
+            atendimento_id: a.id,
+            phone,
+            class_start: start.toISOString(),
+            message,
+          });
+          continue;
+        }
 
         let ok = false;
         let providerResponse: any = null;

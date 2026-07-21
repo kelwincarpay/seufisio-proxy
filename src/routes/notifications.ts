@@ -183,10 +183,11 @@ router.delete('/preferences/:clienteId', async (req: Request, res: Response) => 
  * POST /api/notifications/run-sweep
  * Manually trigger a reminder sweep (for testing / on-demand). Returns the summary.
  */
-router.post('/run-sweep', async (_req: Request, res: Response) => {
+router.post('/run-sweep', async (req: Request, res: Response) => {
   if (!requireSupabase(res)) return;
   try {
-    const summary = await runReminderSweep();
+    const dryRun = req.query.dry_run === '1' || req.query.dry_run === 'true';
+    const summary = await runReminderSweep({ dryRun });
     res.json(summary);
   } catch (error: any) {
     console.error('[Notifications] Sweep error:', error?.message || error);
