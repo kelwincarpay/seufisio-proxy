@@ -167,4 +167,72 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/customers/:id
+ * Read a client's detail (id, nome, cpf, email, telefone, ...) from SeuFisio.
+ * Used by the booking site to show the current phone before editing it.
+ */
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const detail = await getClientDetail(id);
+    if (!detail || !detail.id) {
+      res.status(404).json({ error: 'Client not found', id });
+      return;
+    }
+    res.json({ customer: toCustomer(detail) });
+  } catch (error: any) {
+    if (error?.response?.status === 404) {
+      res.status(404).json({ error: 'Client not found', id: req.params.id });
+      return;
+    }
+    console.error('[Customer Get] Error:', error?.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to fetch customer' });
+  }
+});
+
+/**
+ * PUT /api/customers/:id
+ * Update the client's phone in SeuFisio (the source of truth). Fetches the full
+ * client record, merges the new `telefone`, and PUTs it back — mirroring the
+ * full-object update pattern SeuFisio requires elsewhere.
+ *
+ * Body: { phone } (also accepts { telefone })
+ */
+router.put('/:id', async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const phone = String((req.body?.phone ?? req.body?.telefone) || '').trim();
+    if (!phone) {
+      res.status(400).json({ error: 'Missing required field: phone' });
+      return;
+    }
+
+    // Step 1: fetch the full current client record.
+    const current: Record<string, any> = await getClientDetail(id);
+    if (!current || !current.id) {
+      res.status(404).json({ error: 'Client not found', id });
+      return;
+    }
+
+    // Step 2: merge the new phone (keep BR DDI) and PUT the full object back.
+    const merged = {
+      ...current,
+      telefone: phone,
+      telefone_ddi: current.telefone_ddi || 'BR',
+    };
+
+    console.log(`[Customer Update] Setting phone for client ${id}`);
+    const result = await seufisioClient.put(`/api/cliente/${id}`, merged);
+
+    res.json({ success: true, customer: toCustomer(result && result.id ? result : merged) });
+  } catch (error: any) {
+    console.error('[Customer Update] Error:', error?.response?.data || error.message);
+    res.status(500).json({
+      error: 'Failed to update customer phone',
+      details: error?.response?.data || error.message,
+    });
+  }
+});
+
 export default router;

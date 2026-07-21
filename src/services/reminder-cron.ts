@@ -127,17 +127,18 @@ export async function runReminderSweep(opts: { dryRun?: boolean } = {}): Promise
           continue;
         }
 
-        // Phone: the explicitly stored preference phone wins; SeuFisio detail is
-        // the fallback (and the source for the client's name).
-        let phone = pref.phone || '';
+        // Phone: SeuFisio is the source of truth (the site writes it there); the
+        // stored preference phone is only a fallback. Also gets the client's name.
+        let phone = '';
         let name = '';
         try {
           const detail = await getClientDetail(clienteId);
-          if (!phone) phone = firstNonEmpty(detail.telefone, detail.telefone_2, detail.celular);
+          phone = firstNonEmpty(detail.telefone, detail.telefone_2, detail.celular);
           name = firstNonEmpty(detail.nome, detail.nome_registro);
         } catch (e: any) {
           console.error(`[Reminder] Could not fetch detail for ${clienteId}:`, e?.message);
         }
+        if (!phone) phone = pref.phone || '';
 
         if (!phone) {
           summary.failed++;
