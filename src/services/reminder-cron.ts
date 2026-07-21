@@ -21,16 +21,18 @@ function firstNonEmpty(...values: any[]): string {
   return '';
 }
 
-function buildMessage(name: string, tipo: string | null, date: string, hour: string): string {
+function buildMessage(name: string, date: string, hour: string): string {
   const firstName = name ? name.split(' ')[0] : '';
-  const greeting = firstName ? `Olá, ${firstName}!` : 'Olá!';
+  const greeting = firstName ? `Oi, ${firstName}!` : 'Oi!';
   const [y, mo, d] = date.split('-');
   const prettyDate = y && mo && d ? `${d}/${mo}` : date;
-  const aula = tipo ? ` de ${tipo}` : '';
   return (
-    `${greeting} 🧘\n\n` +
-    `Passando para lembrar da sua aula${aula} na MovArt Pilates em ${prettyDate} às ${hour}.\n\n` +
-    `Se não puder comparecer, cancele com pelo menos 8h de antecedência. Até já!`
+    `${greeting} 💚\n\n` +
+    `Lembrete da sua aula na MovArt Pilates:\n` +
+    `📅 ${prettyDate} às ${hour}\n\n` +
+    `Ao chegar no studio, faça o check-in pelo aplicativo.\n\n` +
+    `Não vai poder vir? Cancele até 8h antes pra liberar a vaga.\n` +
+    `Te esperamos! 💚`
   );
 }
 
@@ -143,7 +145,7 @@ export async function runReminderSweep(opts: { dryRun?: boolean } = {}): Promise
           continue;
         }
 
-        const message = buildMessage(name, a.tipo_nome, a.data_atendimento, a.hora_atendimento);
+        const message = buildMessage(name, a.data_atendimento, a.hora_atendimento);
 
         // Dry-run: report the resolved recipient/message without sending or writing.
         if (dryRun) {
