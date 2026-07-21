@@ -109,12 +109,13 @@ export async function runReminderSweep(): Promise<SweepSummary> {
           continue;
         }
 
-        // Refresh phone/name from SeuFisio (falls back to the stored phone).
+        // Phone: the explicitly stored preference phone wins; SeuFisio detail is
+        // the fallback (and the source for the client's name).
         let phone = pref.phone || '';
         let name = '';
         try {
           const detail = await getClientDetail(clienteId);
-          phone = firstNonEmpty(detail.telefone, detail.telefone_2, detail.celular, phone);
+          if (!phone) phone = firstNonEmpty(detail.telefone, detail.telefone_2, detail.celular);
           name = firstNonEmpty(detail.nome, detail.nome_registro);
         } catch (e: any) {
           console.error(`[Reminder] Could not fetch detail for ${clienteId}:`, e?.message);
