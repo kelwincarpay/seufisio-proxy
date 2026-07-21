@@ -21,18 +21,35 @@ function firstNonEmpty(...values: any[]): string {
   return '';
 }
 
+/** "8h" / "15h10" — friendly BR hour. */
+function formatHour(hour: string): string {
+  const [h, m] = hour.split(':');
+  const hh = parseInt(h, 10);
+  const mm = parseInt(m || '0', 10);
+  return mm ? `${hh}h${String(mm).padStart(2, '0')}` : `${hh}h`;
+}
+
+/** "hoje às 8h" / "amanhã às 15h10" / "no dia 25/07 às 9h" (studio local time). */
+function whenPhrase(date: string, hour: string): string {
+  const t = formatHour(hour);
+  const today = studioToday();
+  const tomorrow = addDays(today, 1);
+  if (date === today) return `hoje às ${t}`;
+  if (date === tomorrow) return `amanhã às ${t}`;
+  const [, mo, d] = date.split('-');
+  return `no dia ${d}/${mo} às ${t}`;
+}
+
 function buildMessage(name: string, date: string, hour: string): string {
   const firstName = name ? name.split(' ')[0] : '';
   const greeting = firstName ? `Oi, ${firstName}!` : 'Oi!';
-  const [y, mo, d] = date.split('-');
-  const prettyDate = y && mo && d ? `${d}/${mo}` : date;
+  const when = whenPhrase(date, hour);
   return (
     `${greeting} 💚\n\n` +
-    `Lembrete da sua aula na MovArt Pilates:\n` +
-    `📅 ${prettyDate} às ${hour}\n\n` +
+    `Passando aqui para te lembrar da sua sessão no MovArt Pilates ${when}.\n\n` +
     `📲 *Ao chegar no studio, faça o check-in pelo aplicativo.*\n\n` +
-    `Não vai poder vir? Cancele até 8h antes pra liberar a vaga.\n` +
-    `Te esperamos! 💚`
+    `Se não puder comparecer, cancele com no mínimo 8h de antecedência pra liberar a vaga.\n\n\n` +
+    `_Você é a arte que se move_`
   );
 }
 
