@@ -30,7 +30,7 @@ function buildMessage(name: string, date: string, hour: string): string {
     `${greeting} 💚\n\n` +
     `Lembrete da sua aula na MovArt Pilates:\n` +
     `📅 ${prettyDate} às ${hour}\n\n` +
-    `Ao chegar no studio, faça o check-in pelo aplicativo.\n\n` +
+    `📲 *Ao chegar no studio, faça o check-in pelo aplicativo.*\n\n` +
     `Não vai poder vir? Cancele até 8h antes pra liberar a vaga.\n` +
     `Te esperamos! 💚`
   );
