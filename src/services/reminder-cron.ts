@@ -45,8 +45,8 @@ function buildMessage(name: string, date: string, hour: string): string {
   const greeting = firstName ? `Oi, ${firstName}!` : 'Oi!';
   const when = whenPhrase(date, hour);
   return (
-    `${greeting} 💚\n\n` +
-    `Passando aqui para te lembrar da sua sessão no MovArt Pilates ${when}.\n\n` +
+    `${greeting}\n\n` +
+    `Passando aqui para te lembrar da sua sessão no MovArt Pilates ${when}. 💚\n\n` +
     `📲 *Ao chegar no studio não se esqueça de fazer o check-in pelo aplicativo* 😉\n\n\n` +
     `_Você é a arte que se move_`
   );
