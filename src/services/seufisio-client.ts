@@ -13,7 +13,7 @@ function createAxiosInstance(): AxiosInstance {
       'origin': 'https://app.seufisio.com.br',
       'referer': 'https://app.seufisio.com.br/',
       'x-requested-with': 'XMLHttpRequest',
-      'x-version-app': '24',
+      'x-version-app': '34',
       'setfisio': env.SEUFISIO_CLINIC_ID,
     },
   });
