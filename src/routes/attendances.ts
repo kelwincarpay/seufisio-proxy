@@ -332,6 +332,7 @@ router.post('/', async (req: Request, res: Response) => {
       aula_experimental: false,
       created_by_user_id: 21714,
       atualizar_valor_cobranca_ciclo: false,
+      confirmacao: true,
     };
 
     console.log(`[Create Attendance] Creating attendance for client ${cliente_id}`);

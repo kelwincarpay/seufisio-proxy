@@ -808,6 +808,12 @@ Content-Type: application/json
 | pago | number | No | 0 = not paid, 1 = paid (default: 0) |
 | produtos_servicos_vinculados | string | No | Service description |
 | centro_custo_id | number | No | Cost center ID (default: 1) |
+| data_pagamento | string | No | Payment date (YYYY-MM-DD). Only used when `pago: 1`; defaults to today (studio time) |
+| forma_pagamento_id | number | No | Payment method. Only used when `pago: 1` (default: 7) |
+
+When `pago: 1` the charge is created **already settled** — the proxy automatically
+adds `data_pagamento` (today) and `forma_pagamento_id` (7), so you only send those
+fields to override the defaults.
 
 **Response:**
 ```json

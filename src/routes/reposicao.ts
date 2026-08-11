@@ -296,6 +296,7 @@ router.post('/create', async (req: Request, res: Response) => {
       created_by_user_id: 21714,
       hora_final_atendimento: finalHour,
       atualizar_valor_cobranca_ciclo: false,
+      confirmacao: true,
     };
 
     console.log(
