@@ -96,7 +96,7 @@ Content-Type: application/json
 | dias[].hora | string | Yes | `HH:MM` |
 | dias[].profissional_id | number | Yes | Professional ID |
 | dias[].sala_id | number | Yes | Room ID — the studio has only `1` (Sala 01) |
-| possui_data_encerramento | boolean | No | Default `true`. The end date is derived from `periodicidade` |
+| possui_data_encerramento | boolean | No | Leave it out. The default follows the studio rule: **Mensal runs open-ended, Semestral gets an end date** derived from `periodicidade` |
 | valor_congelado | number | No | Custom monthly price. **Only send when the user explicitly asks for a custom value** |
 | desconto | object | No | Credit already paid, applied to the first generated charge |
 | desconto.valor | number | No | Amount to discount (e.g. `50` for a paid Sessão Avaliação) |
@@ -110,6 +110,18 @@ Content-Type: application/json
 table and derives the monthly instalment from `periodicidade`. For "Pilates 1x na Semana",
 Mensal is R$ 290/month and Semestral is R$ 200/month. Confirm the value to the user from
 the response, not before the call.
+
+The two periods behave differently, and the response says which one applied through
+`plan.valor_travado`:
+
+| | Mensal | Semestral |
+|---|---|---|
+| End date | none, runs open-ended | derived from the period |
+| Price | follows the studio table, moves with a price increase | frozen at the monthly instalment |
+| `valor_travado` | `false` | `true` |
+
+Worth mentioning to the user when it matters: a monthly plan follows a future price
+increase, a semester plan does not.
 
 **Response (201):**
 ```json
@@ -125,6 +137,7 @@ the response, not before the call.
     "data_encerramento": "2027-02-19",
     "dia_padrao_cobranca": 20,
     "valor_mensal": 200,
+    "valor_travado": true,
     "horarios": "terça e quinta às 9h"
   },
   "validation": { "codigo": "ok", "pode_prosseguir": true, "conflito": null },
@@ -165,6 +178,11 @@ this block reports them:
 | atendimentos_contabilizados | What SeuFisio actually counted as done for the plan, read back after creation |
 | sessoes | The dates and times, so you can list them to the user |
 | aviso | Ready-made warning text |
+
+**This is an operator-facing warning.** "The user" here is the studio person talking to the
+agent, never the client. Nothing about retroactive sessions is ever sent to the client on
+WhatsApp — the client-facing messages are only the registration link, the contracts and the
+signature nudges, and they never mention sessions.
 
 **You must tell the user about this** — see step 8 of the flow. Holidays have no session, so
 `quantidade_prevista` is an upper bound; if it differs from
@@ -460,6 +478,9 @@ If the user did not say the frequency, ask: "1x, 2x or 3x per week?"
 Ask if it is **Mensal** or **Semestral** when the user did not say. Send `periodicidade: 1`
 or `periodicidade: 6`.
 
+Do not send `possui_data_encerramento` — the default already matches the studio rule
+(monthly open-ended, semester with an end date).
+
 Do not quote a price at this point — the proxy derives it and returns it in the response.
 
 ---
@@ -635,10 +656,14 @@ Estas valem como instrução direta ao agente:
 7. **Contrato só sai com cadastro completo**, e isso inclui **estado civil** (que só o
    Termo de Consentimento usa). O texto do contrato é um retrato do momento da criação: se
    sair com o cadastro pela metade, fica com buracos para sempre.
-8. **Data de início no passado exige aviso explícito.** Se `atendimentos_retroativos` vier
-   preenchido, diga quantas aulas foram geradas e em que datas, e pergunte se era isso. Elas
-   já contam como feitas e mexem no saldo do cliente. Não dá para desfazer pelo proxy.
-9. **`aceitou` não é assinatura.** Se algum dia você olhar o dado bruto do contrato, o
+8. **Data de início no passado exige aviso explícito, para o operador.** Se
+   `atendimentos_retroativos` vier preenchido, diga na conversa quantas aulas foram geradas
+   e em que datas, e pergunte se era isso. Elas já contam como feitas e mexem no saldo do
+   cliente. Não dá para desfazer pelo proxy. Esse aviso **nunca** vai para o cliente: as
+   mensagens de WhatsApp são só link de cadastro, contratos e cobrança de assinatura.
+9. **Mensal não tem data de encerramento e não trava preço.** Semestral tem prazo e trava.
+   O proxy já aplica isso pelo `periodicidade`; não mande `possui_data_encerramento`.
+10. **`aceitou` não é assinatura.** Se algum dia você olhar o dado bruto do contrato, o
    campo que vale é `data_hora_assinatura`. O `aceitou` vem `1` desde a criação.
 
 ---
@@ -647,8 +672,6 @@ Estas valem como instrução direta ao agente:
 
 Vale registrar na skill como limitação, para o agente não tropeçar:
 
-- **Plano sem data de encerramento** (`possui_data_encerramento: false`) não foi validado
-  contra a API real. Se o studio começar a vender plano sem prazo, capturar o fluxo antes.
 - **`GET /api/plans/recurring/:id` exige `cliente_id`** porque lê da lista de vendas do
   cliente. Se um dia capturarmos a tela de detalhe do plano recorrente, isso deixa de ser
   necessário.

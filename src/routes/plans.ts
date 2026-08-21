@@ -14,8 +14,8 @@ import {
   getPlanSalesRow,
   getTipoAtendimento,
   isValidPeriodicidade,
-  monthlyValue,
   periodicidadeLabel,
+  resolvePrice,
   retroactiveSessions,
   scheduleText,
   validatePlan,
@@ -134,17 +134,17 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    // The monthly instalment: price-table column for this length, divided by months.
-    const derived = monthlyValue(tipo, input.periodicidade);
-    const valor = valor_congelado != null ? Number(valor_congelado) : derived;
-    if (valor == null || !isFinite(valor)) {
+    // Mensal follows the price table; semestral freezes at the monthly instalment.
+    const price = resolvePrice(tipo, input.periodicidade, valor_congelado);
+    if (price.valor_mensal == null || !isFinite(price.valor_mensal)) {
       res.status(400).json({
         error: `"${tipo.nome}" has no price for ${periodicidadeLabel(input.periodicidade)}. Send valor_congelado to set it manually.`,
       });
       return;
     }
+    const valor = price.valor_mensal;
 
-    const payload = buildPlanPayload(input, tipo, createdByUserId, valor);
+    const payload = buildPlanPayload(input, tipo, createdByUserId, price);
 
     const validation = await validatePlan(payload);
     const blocked = validation?.pode_prosseguir === false || Boolean(validation?.conflito);
@@ -257,7 +257,9 @@ router.post('/', async (req: Request, res: Response) => {
         inicio_servico: plan.inicio_servico,
         data_encerramento: plan.data_encerramento,
         dia_padrao_cobranca: plan.dia_padrao_cobranca,
-        valor_mensal: plan.valor_congelado,
+        valor_mensal: valor,
+        // false = follows the studio price table, so it moves if prices change.
+        valor_travado: price.congelar,
         horarios: scheduleText(input.dias),
       },
       validation,

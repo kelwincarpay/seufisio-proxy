@@ -99,6 +99,43 @@ export function monthlyValue(tipoAtendimento: any, periodicidade: number): numbe
   return Math.round(value * 100) / 100;
 }
 
+export interface ResolvedPrice {
+  /** What goes in `congelar_valor`. */
+  congelar: boolean;
+  /** What goes in `valor_congelado`: the amount, or "" when not freezing. */
+  valor_congelado: number | '';
+  /** The monthly amount the client will actually be charged, for reporting. */
+  valor_mensal: number | null;
+}
+
+/**
+ * Freezing rule, taken from the two captured flows.
+ *
+ * Mensal: the app sends `congelar_valor: false` and `valor_congelado: ""`, so the plan
+ * follows `valor_mensal` in the price table and moves with it if the studio raises prices.
+ *
+ * Semestral: the app freezes at the monthly instalment (`valor_semestral / 6`), because the
+ * table only holds the cycle total — charging 200/month requires pinning 200.
+ *
+ * A custom price always freezes, whatever the period.
+ */
+export function resolvePrice(
+  tipoAtendimento: any,
+  periodicidade: number,
+  custom?: number | null,
+): ResolvedPrice {
+  if (custom != null && custom !== ('' as any)) {
+    const value = Number(custom);
+    return { congelar: true, valor_congelado: value, valor_mensal: value };
+  }
+
+  const derived = monthlyValue(tipoAtendimento, periodicidade);
+  if (periodicidade === 1) {
+    return { congelar: false, valor_congelado: '', valor_mensal: derived };
+  }
+  return { congelar: derived != null, valor_congelado: derived ?? '', valor_mensal: derived };
+}
+
 /** "2026-08-20" + 6 → "02/2027" (the API derives the exact day from the renewal day). */
 export function endMonth(inicioServico: string, periodicidade: number): string {
   const [y, m] = inicioServico.split('-').map(Number);
@@ -169,7 +206,7 @@ export function buildPlanPayload(
   input: CreatePlanInput,
   tipoAtendimento: any,
   createdByUserId: number,
-  valorCongelado: number,
+  price: ResolvedPrice,
 ): Record<string, any> {
   const payload: Record<string, any> = {};
 
@@ -183,7 +220,8 @@ export function buildPlanPayload(
   }
 
   const dia = String(Number(input.inicio_servico.split('-')[2]));
-  const comEncerramento = input.possui_data_encerramento !== false;
+  // All monthly plans run open-ended at MovArt; only multi-month plans get an end date.
+  const comEncerramento = input.possui_data_encerramento ?? input.periodicidade > 1;
 
   payload.periodicidade = input.periodicidade;
   payload.created_by_user_id = createdByUserId;
@@ -203,13 +241,14 @@ export function buildPlanPayload(
   payload.configurar_sem_dias_fixos = false;
   payload.nome_exibicao_tipo_atendimento =
     input.nome_exibicao_tipo_atendimento || tipoAtendimento?.nome || '';
-  payload.congelar_valor = true;
+  payload.congelar_valor = price.congelar;
   payload.gerar_todos_ciclos = false;
-  payload.valor_congelado = valorCongelado;
+  payload.valor_congelado = price.valor_congelado;
   payload.inicio_servico = input.inicio_servico;
+  // Empty string, not null, when there is no end date — that is what the app sends.
   payload.data_encerramento = comEncerramento
     ? endMonth(input.inicio_servico, input.periodicidade)
-    : null;
+    : '';
   payload.dia_padrao_renovacao = dia;
   payload.dia_padrao_cobranca = dia;
   payload.tipo_atendimento_id = input.tipo_atendimento_id;

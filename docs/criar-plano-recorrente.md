@@ -133,16 +133,24 @@ Confirmado pelo contrato gerado depois, que renderizou `Plano: Semestral`.
 
 O MovArt usa só **Mensal (1)** e **Semestral (6)**.
 
-### `valor_congelado` — é a parcela MENSAL
+### Valor: mensal segue a tabela, semestral congela
 
-Regra confirmada: `valor_congelado = tipo_atendimento[campo_valor] ÷ periodicidade`.
+Duas capturas, dois comportamentos diferentes:
 
-Tipo 8 (Pilates 1x): `valor_semestral: 1200` ÷ 6 = **200**. O contrato gerado renderizou
-`Valor: R$ 200,00 por mês` — semestral é **6 parcelas de R$ 200**, não R$ 1.200 à vista.
-Para mensal: `valor_mensal: 290` ÷ 1 = 290.
+| | Mensal | Semestral |
+| --- | --- | --- |
+| `congelar_valor` | `false` | `true` |
+| `valor_congelado` | `""` | `200` |
+| efeito | segue `valor_mensal` da tabela (290) e acompanha reajuste | fixa a parcela, imune a reajuste |
 
-`congelar_valor: true` sempre — trava o preço do cliente contra futuras mudanças de tabela.
-`valor_congelado` só é sobrescrito com valor customizado **quando solicitado**.
+Faz sentido: `valor_mensal` já é o valor da cobrança mensal, então não há o que congelar.
+No semestral a tabela só tem o **total do ciclo** (`valor_semestral: 1200`), e cobrar
+R$ 200/mês exige fixar os 200 — daí `valor_congelado = tabela[periodicidade] ÷
+periodicidade`. O contrato gerado renderizou `Valor: R$ 200,00 por mês`, confirmando que
+semestral é **6 parcelas de R$ 200**, não R$ 1.200 à vista.
+
+Valor customizado congela em qualquer periodicidade: `congelar_valor: true` com o valor
+pedido. Só usar quando solicitado.
 
 Tabela ativa hoje (`GET /api/tipo-atendimento?rowsPerPage=all`):
 
@@ -155,9 +163,11 @@ Tabela ativa hoje (`GET /api/tipo-atendimento?rowsPerPage=all`):
 ### Datas
 
 - `inicio_servico`: `YYYY-MM-DD`.
-- `data_encerramento`: vai como **`MM/YYYY`**, volta como data completa. A API calcula o
-  dia (`2026-08-20` + 6 meses − 1 dia = `2027-02-19`). Com `possui_data_encerramento: false`,
-  ver captura pendente.
+- `data_encerramento`: com encerramento vai como **`MM/YYYY`** e volta como data completa
+  (a API calcula o dia: `2026-08-20` + 6 meses − 1 dia = `2027-02-19`). **Sem encerramento
+  vai como string vazia `""`**, não `null`.
+- `possui_data_encerramento`: no MovArt **todo plano mensal é sem encerramento** e o
+  semestral tem prazo. O default do proxy deriva disso: `periodicidade > 1`.
 - `dia_padrao_renovacao` / `dia_padrao_cobranca`: string com o **dia de `inicio_servico`** (`"20"`).
 
 ### Outros
@@ -198,8 +208,30 @@ Com `gerar_todos_ciclos: false` só o primeiro ciclo é gerado.
 `GET /api/profissional?rowsPerPage=all` retorna uma lista menor e sem a flag `ativo` —
 usar `todos-profissionais`.
 
+## Segunda captura: mensal sem encerramento
+
+21/08/2026, mesmo cliente, plano **mensal** (`periodicidade: 1`), uma terça 18:00 com
+Amanda (prof 3), sem data de encerramento. Só o que difere do semestral:
+
+```JSON
+{
+  "periodicidade": 1,
+  "possui_data_encerramento": false,
+  "data_encerramento": "",
+  "congelar_valor": false,
+  "valor_congelado": "",
+  "inicio_servico": "2026-08-21",
+  "dia_padrao_renovacao": "21",
+  "dia_padrao_cobranca": "21",
+  "created_by_user_id": 21714
+}
+```
+
+O `created_by_user_id` mudou porque foi outro usuário do studio — o proxy lê de
+`GET /api/user/user`, então acompanha sozinho.
+
+`scripts/check-payloads.ts` compara o `buildPlanPayload` contra **as duas** capturas.
+
 ## Pendente de captura
 
-- Plano **mensal sem data de encerramento**: confirmar `periodicidade: 1`,
-  `possui_data_encerramento: false` e o que vai em `data_encerramento`.
 - Shape do `conflito` no `validar-criacao` quando há choque de horário.

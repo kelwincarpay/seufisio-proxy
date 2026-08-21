@@ -9,7 +9,7 @@
  *   SEUFISIO_USER=x SEUFISIO_PASSWORD=x SEUFISIO_CLIENT_SECRET=x API_SECRET_TOKEN=x \
  *     npx tsx scripts/check-payloads.ts
  */
-import { buildPlanPayload, endMonth, monthlyValue, periodicidadeLabel, retroactiveSessions, scheduleText } from '../src/services/recurring-plans';
+import { buildPlanPayload, endMonth, monthlyValue, periodicidadeLabel, resolvePrice, retroactiveSessions, scheduleText } from '../src/services/recurring-plans';
 import { discountNote, formatBRL } from '../src/services/charges';
 import { missingRegistrationFields } from '../src/services/contracts';
 import * as msg from '../src/services/onboarding-messages';
@@ -41,7 +41,7 @@ console.log(scheduleText([dias[0], { ...dias[1], hora: '15:10' }]));
 console.log('\n--- payload vs captura ---');
 const payload = buildPlanPayload(
   { cliente_id: 216, tipo_atendimento_id: 8, periodicidade: 6, inicio_servico: '2026-08-20', dias },
-  tipo8, 45390, 200,
+  tipo8, 45390, resolvePrice(tipo8, 6),
 );
 const captured = {"domingo":false,"segunda":false,"terca":true,"quarta":false,"quinta":true,"sexta":false,"sabado":false,"sala_id_domingo":null,"sala_id_segunda":null,"sala_id_terca":1,"sala_id_quarta":null,"sala_id_quinta":1,"sala_id_sexta":null,"sala_id_sabado":null,"profissional_id_domingo":null,"profissional_id_segunda":null,"profissional_id_terca":1,"profissional_id_quarta":null,"profissional_id_quinta":1,"profissional_id_sexta":null,"profissional_id_sabado":null,"hora_domingo":"","hora_segunda":"","hora_terca":"09:00","hora_quarta":"","hora_quinta":"09:00","hora_sexta":"","hora_sabado":"","periodicidade":6,"created_by_user_id":45390,"possui_dias_fixos":1,"possui_data_encerramento":true,"percentual_desconto":0,"servico_gratis":false,"cobranca_automatica":false,"forma_pagamento":"","cartao_credito_id":null,"stripe_payment_method_id":null,"quantidade_reposicoes_por_ciclo":null,"ignorar_quantidade_reposicoes_por_ciclo":true,"permitir_justificar_ausencia_app_checkin":true,"permitir_reposicoes_apos_termino":false,"configurar_sem_dias_fixos":false,"nome_exibicao_tipo_atendimento":"Pilates 1x na Semana","congelar_valor":true,"gerar_todos_ciclos":false,"valor_congelado":200,"inicio_servico":"2026-08-20","data_encerramento":"02/2027","dia_padrao_renovacao":"20","dia_padrao_cobranca":"20","tipo_atendimento_id":8,"cliente_id":"216"} as Record<string, any>;
 
@@ -53,6 +53,29 @@ for (const k of keys) {
   if (a !== b) { console.log(`  DIFF ${k}: captura=${a} nosso=${b}`); diffs++; }
 }
 console.log(diffs === 0 ? '  ✔ payload idêntico à captura (' + keys.size + ' campos)' : `  ${diffs} diferença(s)`);
+
+// Segunda captura (21/08/2026): plano MENSAL sem data de encerramento, terca 18:00 com
+// Amanda (prof 3). Revela que mensal nao congela valor e que o encerramento vazio e "".
+const diasMensal = [{ dia: 'terca' as const, hora: '18:00', profissional_id: 3, sala_id: 1 }];
+const payloadMensal = buildPlanPayload(
+  { cliente_id: 216, tipo_atendimento_id: 8, periodicidade: 1, inicio_servico: '2026-08-21', dias: diasMensal },
+  tipo8, 21714, resolvePrice(tipo8, 1),
+);
+const capturedMensal = {"domingo":false,"segunda":false,"terca":true,"quarta":false,"quinta":false,"sexta":false,"sabado":false,"sala_id_domingo":null,"sala_id_segunda":null,"sala_id_terca":1,"sala_id_quarta":null,"sala_id_quinta":null,"sala_id_sexta":null,"sala_id_sabado":null,"profissional_id_domingo":null,"profissional_id_segunda":null,"profissional_id_terca":3,"profissional_id_quarta":null,"profissional_id_quinta":null,"profissional_id_sexta":null,"profissional_id_sabado":null,"hora_domingo":"","hora_segunda":"","hora_terca":"18:00","hora_quarta":"","hora_quinta":"","hora_sexta":"","hora_sabado":"","periodicidade":1,"created_by_user_id":21714,"possui_dias_fixos":1,"possui_data_encerramento":false,"percentual_desconto":0,"servico_gratis":false,"cobranca_automatica":false,"forma_pagamento":"","cartao_credito_id":null,"stripe_payment_method_id":null,"quantidade_reposicoes_por_ciclo":null,"ignorar_quantidade_reposicoes_por_ciclo":true,"permitir_justificar_ausencia_app_checkin":true,"permitir_reposicoes_apos_termino":false,"configurar_sem_dias_fixos":false,"nome_exibicao_tipo_atendimento":"Pilates 1x na Semana","congelar_valor":false,"gerar_todos_ciclos":false,"valor_congelado":"","inicio_servico":"2026-08-21","data_encerramento":"","dia_padrao_renovacao":"21","dia_padrao_cobranca":"21","tipo_atendimento_id":8,"cliente_id":"216"} as Record<string, any>;
+
+console.log('\n--- payload MENSAL vs captura ---');
+let diffsM = 0;
+for (const k of new Set([...Object.keys(capturedMensal), ...Object.keys(payloadMensal)])) {
+  const a = JSON.stringify(capturedMensal[k]);
+  const b = JSON.stringify((payloadMensal as any)[k]);
+  if (a !== b) { console.log(`  DIFF ${k}: captura=${a} nosso=${b}`); diffsM++; }
+}
+console.log(diffsM === 0 ? '  ✔ payload mensal idêntico à captura' : `  ${diffsM} diferença(s)`);
+
+console.log('\n--- regra de congelamento ---');
+console.log('mensal   :', JSON.stringify(resolvePrice(tipo8, 1)), '(nao congela, cobra 290 da tabela)');
+console.log('semestral:', JSON.stringify(resolvePrice(tipo8, 6)), '(congela na parcela de 200)');
+console.log('custom   :', JSON.stringify(resolvePrice(tipo8, 1, 250)), '(congela no valor pedido)');
 
 console.log('\n--- desconto ---');
 console.log(JSON.stringify(discountNote(200, 50, 150)));
