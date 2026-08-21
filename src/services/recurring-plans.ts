@@ -7,7 +7,7 @@
  * Spec: docs/criar-plano-recorrente.md
  */
 import { seufisioClient } from './seufisio-client';
-import { formatHour } from './client-attendances';
+import { addDays, formatHour } from './client-attendances';
 
 export const DAY_NAMES = [
   'domingo',
@@ -121,6 +121,49 @@ export function scheduleText(dias: PlanDay[]): string {
   return join(dias.map((d) => `${DAY_LABEL[d.dia]} às ${formatHour(d.hora)}`));
 }
 
+export interface RetroactiveSession {
+  data: string;
+  dia: DayName;
+  dia_label: string;
+  hora: string;
+}
+
+/**
+ * Sessions the plan grid lands on between `inicio_servico` and today, inclusive.
+ *
+ * Creating a plan with a start date in the past makes SeuFisio generate those
+ * attendances retroactively, which surprises whoever sold the plan. Computed from the
+ * grid rather than read back, so holidays (which have no session per the contract) may
+ * make this an upper bound.
+ */
+export function retroactiveSessions(
+  inicioServico: string,
+  dias: PlanDay[],
+  today: string,
+): RetroactiveSession[] {
+  if (inicioServico >= today) return [];
+
+  const byWeekday = new Map<number, PlanDay>();
+  for (const d of dias) byWeekday.set(DAY_NAMES.indexOf(d.dia), d);
+
+  const out: RetroactiveSession[] = [];
+  // Guard the walk: a start date far in the past should not spin forever.
+  for (let date = inicioServico, i = 0; date <= today && i < 400; date = addDays(date, 1), i++) {
+    // Midday UTC keeps the weekday stable regardless of offset.
+    const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+    const match = byWeekday.get(weekday);
+    if (match) {
+      out.push({
+        data: date,
+        dia: match.dia,
+        dia_label: DAY_LABEL[match.dia],
+        hora: match.hora,
+      });
+    }
+  }
+  return out;
+}
+
 /** The 50+ field payload SeuFisio expects, shared by validar-criacao and the create. */
 export function buildPlanPayload(
   input: CreatePlanInput,
@@ -205,19 +248,27 @@ export async function getTipoAtendimento(id: number): Promise<any> {
 }
 
 /**
- * The cycle id of a plan, needed to find the charge it generated. The create
- * response does not include it, so it is read back from the sales list.
+ * The plan's row in the client's active sales list. Holds the cycle id (absent from
+ * the create response) and the session counters.
  */
-export async function getPlanCycleId(
+export async function getPlanSalesRow(
   clienteId: number | string,
   planId: number,
-): Promise<number | null> {
+): Promise<any | null> {
   const sales = await seufisioClient.get(`/api/cliente/${clienteId}/listar-vendas`, {
     tab: 'ativas',
     page: 1,
     per_page: 20,
   });
-  const row = (sales?.data || []).find((s: any) => Number(s.id) === Number(planId));
+  return (sales?.data || []).find((s: any) => Number(s.id) === Number(planId)) || null;
+}
+
+/** The cycle id of a plan, needed to find the charge it generated. */
+export async function getPlanCycleId(
+  clienteId: number | string,
+  planId: number,
+): Promise<number | null> {
+  const row = await getPlanSalesRow(clienteId, planId);
   return row?.cicloId ?? null;
 }
 

@@ -3,6 +3,7 @@ import { seufisioClient } from '../services/seufisio-client';
 import { isSupabaseConfigured } from '../services/supabase';
 import { applyDiscount } from '../services/charges';
 import { registerOnboarding } from '../services/onboarding';
+import { studioToday } from '../services/client-attendances';
 import {
   CreatePlanInput,
   DAY_NAMES as RECURRING_DAYS,
@@ -10,10 +11,12 @@ import {
   createPlan,
   findCycleCharge,
   getCurrentUserId,
+  getPlanSalesRow,
   getTipoAtendimento,
   isValidPeriodicidade,
   monthlyValue,
   periodicidadeLabel,
+  retroactiveSessions,
   scheduleText,
   validatePlan,
 } from '../services/recurring-plans';
@@ -193,6 +196,34 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
+    // A start date in the past makes SeuFisio generate those sessions retroactively.
+    // Report them so the agent can warn instead of leaving it to be discovered later.
+    let atendimentosRetroativos: any = null;
+    const hoje = studioToday();
+    if (input.inicio_servico < hoje) {
+      const sessoes = retroactiveSessions(input.inicio_servico, input.dias, hoje);
+      let contabilizados: number | null = null;
+      try {
+        const row = await getPlanSalesRow(cliente_id, plan.id);
+        contabilizados = row?.atendimentosFeitos ?? null;
+      } catch (e: any) {
+        console.error('[Plans] Could not read session counters:', e?.message);
+      }
+      atendimentosRetroativos = {
+        inicio_no_passado: true,
+        inicio_servico: input.inicio_servico,
+        hoje,
+        quantidade_prevista: sessoes.length,
+        atendimentos_contabilizados: contabilizados,
+        sessoes,
+        aviso:
+          sessoes.length > 0
+            ? `O plano começou em ${input.inicio_servico}, antes de hoje, então o SeuFisio gerou ${sessoes.length} atendimento(s) retroativo(s). Avise o usuário e confirme se é isso que ele queria.`
+            : `O plano começou em ${input.inicio_servico}, antes de hoje, mas nenhum dia da grade caiu nesse intervalo.`,
+      };
+      console.log(`[Plans] Retroactive sessions for plan ${plan.id}:`, JSON.stringify(atendimentosRetroativos));
+    }
+
     // Register the follow-up flow and send the registration link. Done here so the
     // agent cannot forget it.
     let onboardingResult: any = null;
@@ -230,6 +261,7 @@ router.post('/', async (req: Request, res: Response) => {
         horarios: scheduleText(input.dias),
       },
       validation,
+      atendimentos_retroativos: atendimentosRetroativos,
       desconto: descontoAplicado,
       onboarding: onboardingResult,
     });

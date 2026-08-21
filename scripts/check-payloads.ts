@@ -9,7 +9,7 @@
  *   SEUFISIO_USER=x SEUFISIO_PASSWORD=x SEUFISIO_CLIENT_SECRET=x API_SECRET_TOKEN=x \
  *     npx tsx scripts/check-payloads.ts
  */
-import { buildPlanPayload, endMonth, monthlyValue, periodicidadeLabel, scheduleText } from '../src/services/recurring-plans';
+import { buildPlanPayload, endMonth, monthlyValue, periodicidadeLabel, retroactiveSessions, scheduleText } from '../src/services/recurring-plans';
 import { discountNote, formatBRL } from '../src/services/charges';
 import { missingRegistrationFields } from '../src/services/contracts';
 import * as msg from '../src/services/onboarding-messages';
@@ -63,6 +63,15 @@ console.log('\n--- campos faltando (cliente 216 real) ---');
 const cliente216 = { nome: 'Kelwin Sanches Savoia', cpf: '431.474.308-55', data_nascimento: null, profissao: null, estado_civil: null, endereco: null, endereco_numero: null, cep: null, bairro: null, bairro_id: null, cidade: null, cidade_id: null, uf: null };
 console.log(missingRegistrationFields(cliente216).join(', '));
 console.log('completo:', missingRegistrationFields({ ...cliente216, data_nascimento: '1990-01-01', profissao: 'Dev', estado_civil: 'Casado', endereco: 'Rua X', endereco_numero: '10', cep: '12900-000', bairro_id: 3, cidade_id: 5, uf: 'SP' }).length === 0);
+
+console.log('\n--- atendimentos retroativos ---');
+// A captura real: plano criado em 21/08 com inicio em 20/08 (quinta) -> 1 sessao retroativa,
+// e o listar-vendas devolveu atendimentosFeitos: 1.
+const retro = retroactiveSessions('2026-08-20', dias, '2026-08-21');
+console.log('inicio 20/08, hoje 21/08 :', JSON.stringify(retro), '(esperado 1: quinta 20/08)');
+console.log('inicio 04/08, hoje 21/08 :', retroactiveSessions('2026-08-04', dias, '2026-08-21').map(r => r.dia_label + ' ' + r.data).join(', '));
+console.log('inicio futuro            :', JSON.stringify(retroactiveSessions('2026-09-01', dias, '2026-08-21')), '(esperado [])');
+console.log('inicio = hoje            :', JSON.stringify(retroactiveSessions('2026-08-21', dias, '2026-08-21')), '(esperado [])');
 
 console.log('\n=== MENSAGENS ===');
 const contracts = [

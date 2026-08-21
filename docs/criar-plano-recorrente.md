@@ -174,6 +174,10 @@ Tabela ativa hoje (`GET /api/tipo-atendimento?rowsPerPage=all`):
 1. **Cria o ciclo** (`cicloId: 640`, visível em `GET /api/cliente/:id/listar-vendas`).
 2. **Gera atendimentos retroativos** — `inicio_servico` 20/08 era quinta, o plano tem quinta
    09:00, e o `listar-vendas` já retornou `atendimentosFeitos: 1`. Comportamento esperado.
+   Quando `inicio_servico < hoje`, `POST /api/plans` devolve `atendimentos_retroativos` com
+   as datas (calculadas da grade) e o `atendimentosFeitos` lido de volta, para o agente
+   avisar quem vendeu em vez de a surpresa aparecer depois. Feriado não tem sessão, então a
+   contagem calculada é limite superior.
 3. **Gera a cobrança do primeiro ciclo** — `conta_receber` 827,
    `titulo: "Ref. serviço 154 ciclo: 20/08/2026"`, `servico_ciclo_id: 640`, `valor: 200`,
    `data_vencimento: 2026-08-20`. Ver `desconto-primeira-cobranca.md`.
