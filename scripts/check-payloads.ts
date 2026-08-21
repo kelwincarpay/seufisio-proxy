@@ -13,6 +13,7 @@ import { buildPlanPayload, endMonth, monthlyValue, periodicidadeLabel, resolvePr
 import { discountNote, formatBRL } from '../src/services/charges';
 import { missingRegistrationFields } from '../src/services/contracts';
 import * as msg from '../src/services/onboarding-messages';
+import { nextOccurrence } from '../src/services/slot-assignment';
 
 const tipo8 = { id: 8, nome: 'Pilates 1x na Semana', valor_mensal: 290, valor_trimestral: 600, valor_semestral: 1200 };
 const tipo9 = { id: 9, nome: 'Pilates 2x na Semana', valor_mensal: 465, valor_trimestral: 1005, valor_semestral: 2010 };
@@ -95,6 +96,13 @@ console.log('inicio 20/08, hoje 21/08 :', JSON.stringify(retro), '(esperado 1: q
 console.log('inicio 04/08, hoje 21/08 :', retroactiveSessions('2026-08-04', dias, '2026-08-21').map(r => r.dia_label + ' ' + r.data).join(', '));
 console.log('inicio futuro            :', JSON.stringify(retroactiveSessions('2026-09-01', dias, '2026-08-21')), '(esperado [])');
 console.log('inicio = hoje            :', JSON.stringify(retroactiveSessions('2026-08-21', dias, '2026-08-21')), '(esperado [])');
+
+console.log('\n--- proxima ocorrencia do dia da semana ---');
+// 2026-08-21 e uma sexta.
+for (const [dia, esperado] of [['sexta','2026-08-21'],['sabado','2026-08-22'],['terca','2026-08-25'],['quinta','2026-08-27'],['quarta','2026-08-26']] as const) {
+  const got = nextOccurrence(dia as any, '2026-08-21');
+  console.log(`  ${dia.padEnd(8)} a partir de sexta 21/08 -> ${got} ${got === esperado ? 'OK' : 'ERRADO, esperado ' + esperado}`);
+}
 
 console.log('\n=== MENSAGENS ===');
 const contracts = [

@@ -4,6 +4,7 @@ import { isSupabaseConfigured } from '../services/supabase';
 import { applyDiscount } from '../services/charges';
 import { registerOnboarding } from '../services/onboarding';
 import { studioToday } from '../services/client-attendances';
+import { assignProfessionals } from '../services/slot-assignment';
 import {
   CreatePlanInput,
   DAY_NAMES as RECURRING_DAYS,
@@ -107,10 +108,6 @@ router.post('/', async (req: Request, res: Response) => {
         res.status(400).json({ error: `Invalid hora "${d?.hora}" for ${d?.dia}. Use HH:MM.` });
         return;
       }
-      if (!d?.profissional_id || !d?.sala_id) {
-        res.status(400).json({ error: `${d.dia} is missing profissional_id or sala_id` });
-        return;
-      }
     }
 
     const input: CreatePlanInput = {
@@ -133,6 +130,19 @@ router.post('/', async (req: Request, res: Response) => {
       res.status(400).json({ error: `tipo_atendimento_id ${input.tipo_atendimento_id} not found` });
       return;
     }
+
+    // Resolve the professional (and room) for each day from the calendar, the same way
+    // the create-attendance flow does. A day that already names a professional keeps it.
+    const assignment = await assignProfessionals(dias, inicio_servico);
+    if (assignment.problemas.length > 0) {
+      res.status(400).json({
+        error: 'Não foi possível definir profissional para todos os dias pedidos',
+        problemas: assignment.problemas,
+      });
+      return;
+    }
+
+    input.dias = assignment.dias;
 
     // Mensal follows the price table; semestral freezes at the monthly instalment.
     const price = resolvePrice(tipo, input.periodicidade, valor_congelado);
@@ -159,6 +169,7 @@ router.post('/', async (req: Request, res: Response) => {
           periodicidade: periodicidadeLabel(input.periodicidade),
           horarios: scheduleText(input.dias),
           valor_mensal: valor,
+          dias: assignment.dias,
         },
       });
       return;
@@ -263,6 +274,7 @@ router.post('/', async (req: Request, res: Response) => {
         horarios: scheduleText(input.dias),
       },
       validation,
+      dias: assignment.dias,
       atendimentos_retroativos: atendimentosRetroativos,
       desconto: descontoAplicado,
       onboarding: onboardingResult,

@@ -114,6 +114,12 @@ Resposta 201 (campos que importam):
 Dia não usado vai `false` / `null` / `""` — **string vazia na hora, não `null`**.
 Mesmo shape que `PUT /api/pacote/:id/atualizar-horarios` já usa.
 
+`profissional_id` e `sala_id` não vêm do chamador: `services/slot-assignment.ts` resolve
+pela agenda (próxima ocorrência do dia da semana → `/api/slots/calendario` → slot que começa
+no horário pedido), a mesma regra da criação de sessão avulsa. Slot lotado não bloqueia,
+volta com `lotado: true`. Slot inexistente no horário bloqueia com 400 e a lista de
+horários que existem naquele dia.
+
 ### `periodicidade` — é o número de meses
 
 Decodificado via `GET /api/tipos-aluno`: os `value` do enum são 0/5/1/4/2/8/3, e não existe

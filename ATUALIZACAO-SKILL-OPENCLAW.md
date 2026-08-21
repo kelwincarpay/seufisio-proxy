@@ -77,8 +77,8 @@ Content-Type: application/json
   "periodicidade": 6,
   "inicio_servico": "2026-08-20",
   "dias": [
-    { "dia": "terca",  "hora": "09:00", "profissional_id": 1, "sala_id": 1 },
-    { "dia": "quinta", "hora": "09:00", "profissional_id": 1, "sala_id": 1 }
+    { "dia": "terca",  "hora": "09:00" },
+    { "dia": "quinta", "hora": "09:00" }
   ],
   "desconto": { "valor": 50 }
 }
@@ -94,8 +94,8 @@ Content-Type: application/json
 | dias | array | Yes | The weekly grid. One entry per session day |
 | dias[].dia | string | Yes | `domingo`, `segunda`, `terca`, `quarta`, `quinta`, `sexta`, `sabado` (no accents) |
 | dias[].hora | string | Yes | `HH:MM` |
-| dias[].profissional_id | number | Yes | Professional ID |
-| dias[].sala_id | number | Yes | Room ID — the studio has only `1` (Sala 01) |
+| dias[].profissional_id | number | No | **Leave it out.** The proxy reads the calendar and assigns whoever works that day/time. Send it only to force a specific professional |
+| dias[].sala_id | number | No | Leave it out — resolved automatically (the studio has one room) |
 | possui_data_encerramento | boolean | No | Leave it out. The default follows the studio rule: **Mensal runs open-ended, Semestral gets an end date** derived from `periodicidade` |
 | valor_congelado | number | No | Custom monthly price. **Only send when the user explicitly asks for a custom value** |
 | desconto | object | No | Credit already paid, applied to the first generated charge |
@@ -105,6 +105,12 @@ Content-Type: application/json
 
 **Number of days must match the plan type.** "Pilates 1x na Semana" takes 1 entry in
 `dias`, "2x na Semana" takes 2, "3x na Semana" takes 3.
+
+**The professional is assigned by the proxy**, using the same rule as the create-attendance
+flow: it takes the next occurrence of that weekday, reads the calendar, and picks the
+professional whose slot starts at the requested time. You do not have to query the calendar
+first, and you should not guess or ask the user who it will be. Each day can end up with a
+different professional. The response tells you who was assigned, in `dias`.
 
 **The price is automatic.** Do not compute or ask for it: the proxy reads the studio price
 table and derives the monthly instalment from `periodicidade`. For "Pilates 1x na Semana",
@@ -141,6 +147,14 @@ increase, a semester plan does not.
     "horarios": "terça e quinta às 9h"
   },
   "validation": { "codigo": "ok", "pode_prosseguir": true, "conflito": null },
+  "dias": [
+    { "dia": "terca", "hora": "09:00", "profissional_id": 1, "profissional_nome": "Pri Savoia",
+      "sala_id": 1, "data_referencia": "2026-08-25", "vagas": 2, "lotado": false,
+      "atribuido_automaticamente": true },
+    { "dia": "quinta", "hora": "09:00", "profissional_id": 3, "profissional_nome": "Amanda Mel",
+      "sala_id": 1, "data_referencia": "2026-08-27", "vagas": 0, "lotado": true,
+      "atribuido_automaticamente": true }
+  ],
   "atendimentos_retroativos": {
     "inicio_no_passado": true,
     "inicio_servico": "2026-08-20",
@@ -167,6 +181,25 @@ increase, a semester plan does not.
   }
 }
 ```
+
+**`dias`** is the resolved weekly grid. Report the professional per day from
+`profissional_nome`. `lotado: true` means the slot is already at capacity — mention it, but
+it does **not** block the sale (studio decision). `atribuido_automaticamente: false` means
+the professional came from your request, not from the calendar.
+
+**Response (400) — no professional could be assigned:**
+```json
+{
+  "error": "Não foi possível definir profissional para todos os dias pedidos",
+  "problemas": [
+    { "dia": "quinta", "hora": "07:00", "motivo": "Nenhum horário de 07:00 na agenda de quinta (referência 2026-08-27)",
+      "horarios_disponiveis": ["08:00", "09:00", "10:00", "15:00"] }
+  ]
+}
+```
+
+This means nobody works at that time, not that the class is full. Offer the user the times
+in `horarios_disponiveis` and retry with one of them.
 
 **`atendimentos_retroativos`** is `null` when `inicio_servico` is today or in the future.
 When the start date is in the past, SeuFisio **generates those sessions retroactively** and
@@ -495,19 +528,20 @@ days is a mistake worth pointing out, not a request to fulfil.
 
 ---
 
-### Step 5: Assign Professionals
+### Step 5: Professionals — Skip It
 
-For each requested day/time, check availability and pick the professional:
+Nothing to do here. `POST /api/plans` assigns the professional and the room for each day
+from the calendar, with the same rule the create-attendance flow uses. Do not query
+`/api/calendar` first and do not ask the user who the professional will be — you find out
+from the response and report it.
 
-```
-GET {{SEUFISIO_PROXY_URL}}/api/calendar?date=<next date matching that weekday>
-```
-
-Room is always `sala_id: 1`.
+Only send `profissional_id` when the user explicitly asks for a specific professional
+("put her with Amanda").
 
 **Do not refuse the sale because a slot looks full.** Overbooking is not checked on plan
-creation, by decision of the studio. The plan validation upstream reports what it reports,
-and section 16 handles it through the 409 confirmation.
+creation, by decision of the studio: a full slot comes back as `lotado: true` in `dias`,
+which you mention without blocking. A 400 with `problemas` is different — that means nobody
+works at that time.
 
 ---
 
@@ -539,7 +573,7 @@ Call `POST /api/plans` (section 16).
 
 Tell the user, from the response:
 - the plan, the period and the **monthly** value (`plan.valor_mensal`)
-- the schedule (`plan.horarios`)
+- the schedule (`plan.horarios`) and who was assigned to each day (`dias[].profissional_nome`)
 - the billing day (`plan.dia_padrao_cobranca`) and the end date (`plan.data_encerramento`)
 - the discount, if there was one (`desconto.valor_final` is what the client will pay now)
 - that the registration link went out on WhatsApp (`onboarding.mensagem_enviada`)
@@ -571,17 +605,17 @@ was sent. Ask for the number, save it with section 21, then call section 20.
 2. Types: `GET /api/attendance-types` → "Pilates 1x na Semana" is id 8
 3. **Catch the mismatch:** 1x per week but two days were given. Ask: "Pilates 1x na Semana is one session per week, but you gave me two days. Do you want 2x a week (id 9), or 1x on just one of those days?"
 4. User: "2x then"
-5. Calendar for both days at 09:00 → professional 1 available on both
-6. Create:
+5. Create (no calendar lookup — the proxy assigns the professionals):
    ```json
    POST /api/plans
    { "cliente_id": 216, "tipo_atendimento_id": 9, "periodicidade": 6,
      "inicio_servico": "2026-08-24",
-     "dias": [ { "dia": "terca", "hora": "09:00", "profissional_id": 1, "sala_id": 1 },
-               { "dia": "quinta", "hora": "09:00", "profissional_id": 1, "sala_id": 1 } ],
+     "dias": [ { "dia": "terca", "hora": "09:00" },
+               { "dia": "quinta", "hora": "09:00" } ],
      "desconto": { "valor": 50 } }
    ```
-7. Respond: "Done! Kelwin is on Pilates 2x na Semana, semester plan, R$ 335/month, Tuesday and Thursday at 9am with Priscila. Billing on the 24th, plan runs to 23/02/2027. The first charge came out at R$ 285 with the R$ 50 evaluation credit. I sent him the registration link on WhatsApp — he needs to fill it in before the contracts can be issued."
+6. Read `dias` from the response: Tuesday went to Pri Savoia, Thursday to Amanda Mel
+7. Respond: "Done! Kelwin is on Pilates 2x na Semana, semester plan, R$ 335/month, Tuesday at 9am with Pri and Thursday at 9am with Amanda. Billing on the 24th, plan runs to 23/02/2027. The first charge came out at R$ 285 with the R$ 50 evaluation credit. I sent him the registration link on WhatsApp — he needs to fill it in before the contracts can be issued."
 
 ### Example 2: Schedule warning, needs confirmation
 
@@ -661,9 +695,13 @@ Estas valem como instrução direta ao agente:
    e em que datas, e pergunte se era isso. Elas já contam como feitas e mexem no saldo do
    cliente. Não dá para desfazer pelo proxy. Esse aviso **nunca** vai para o cliente: as
    mensagens de WhatsApp são só link de cadastro, contratos e cobrança de assinatura.
-9. **Mensal não tem data de encerramento e não trava preço.** Semestral tem prazo e trava.
+9. **Não escolha profissional e não consulte o calendário antes de criar plano.** O proxy
+   resolve pela agenda, com a mesma regra da criação de sessão. Você descobre quem ficou
+   com cada dia pela resposta. Só mande `profissional_id` se o usuário pedir alguém
+   específico.
+10. **Mensal não tem data de encerramento e não trava preço.** Semestral tem prazo e trava.
    O proxy já aplica isso pelo `periodicidade`; não mande `possui_data_encerramento`.
-10. **`aceitou` não é assinatura.** Se algum dia você olhar o dado bruto do contrato, o
+11. **`aceitou` não é assinatura.** Se algum dia você olhar o dado bruto do contrato, o
    campo que vale é `data_hora_assinatura`. O `aceitou` vem `1` desde a criação.
 
 ---
