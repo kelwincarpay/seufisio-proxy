@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { seufisioClient } from '../services/seufisio-client';
 import { studioToday } from '../services/client-attendances';
+import { applyDiscount } from '../services/charges';
 
 const router = Router();
 
@@ -92,6 +93,55 @@ router.post('/', async (req: Request, res: Response) => {
       error: 'Failed to create charge',
       details: error?.response?.data || error.message,
     });
+  }
+});
+
+/**
+ * POST /api/charges/:id/discount
+ * Apply a discount to an existing charge — used when the client already paid
+ * something before closing the plan (a R$ 50 avaliação, for example) and that
+ * credit comes off the first generated charge.
+ *
+ * Body: { valor_desconto, descricao? }
+ *
+ * The value drops and the discount is recorded in `descricao` (the only free-text
+ * field on a charge). Spec: docs/desconto-primeira-cobranca.md
+ */
+router.post('/:id/discount', async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { valor_desconto, descricao } = req.body || {};
+
+    if (valor_desconto == null || !isFinite(Number(valor_desconto))) {
+      res.status(400).json({ error: 'Missing or invalid required field: valor_desconto' });
+      return;
+    }
+
+    console.log(`[Charge Discount] Applying ${valor_desconto} to charge ${id}`);
+
+    const result = await applyDiscount(id, Number(valor_desconto), { descricao });
+
+    res.json({
+      success: true,
+      charge: {
+        id: result.charge?.id,
+        titulo: result.charge?.titulo,
+        valor: result.charge?.valor,
+        valor_bruto: result.charge?.valor_bruto,
+        descricao: result.charge?.descricao,
+        data_vencimento: result.charge?.data_vencimento,
+        pago: result.charge?.pago,
+      },
+      valor_original: result.valor_original,
+      valor_desconto: result.valor_desconto,
+      valor_final: result.valor_final,
+    });
+  } catch (error: any) {
+    const details = error?.response?.data || error.message;
+    console.error('[Charge Discount] Error:', details);
+    // Validation problems (zero/over-value discount) are the caller's fault.
+    const status = /Discount|valor/.test(String(error?.message)) && !error?.response ? 400 : 500;
+    res.status(status).json({ error: 'Failed to apply discount', details });
   }
 });
 

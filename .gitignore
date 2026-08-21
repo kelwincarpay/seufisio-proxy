@@ -4,3 +4,7 @@ dist/
 *.js.map
 *.d.ts
 !tsconfig.json
+
+# capturas de rede (HAR contem tokens)
+capturas/
+*.har

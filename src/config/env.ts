@@ -30,6 +30,12 @@ interface EnvConfig {
   // Reminder cron schedule + how many days ahead to scan for classes.
   NOTIFICATIONS_CRON: string;
   NOTIFY_LOOKAHEAD_DAYS: number;
+  // Post-sale onboarding sweep: registration link → contracts → signatures.
+  ONBOARDING_CRON: string;
+  ONBOARDING_RESEND_HOURS: number;
+  // Contract templates (GET /api/modelo-contrato/options).
+  MODELO_CONTRATO_CLIENTE_ID: number;
+  MODELO_CONTRATO_TERMO_ID: number;
 }
 
 function getEnvVar(key: string, required = true): string {
@@ -59,4 +65,8 @@ export const env: EnvConfig = {
   EVOLUTION_INSTANCE: getEnvVar('EVOLUTION_INSTANCE', false),
   NOTIFICATIONS_CRON: getEnvVar('NOTIFICATIONS_CRON', false) || '*/15 * * * *',
   NOTIFY_LOOKAHEAD_DAYS: parseInt(process.env.NOTIFY_LOOKAHEAD_DAYS || '2', 10),
+  ONBOARDING_CRON: getEnvVar('ONBOARDING_CRON', false) || '*/10 * * * *',
+  ONBOARDING_RESEND_HOURS: parseInt(process.env.ONBOARDING_RESEND_HOURS || '48', 10),
+  MODELO_CONTRATO_CLIENTE_ID: parseInt(process.env.MODELO_CONTRATO_CLIENTE_ID || '1', 10),
+  MODELO_CONTRATO_TERMO_ID: parseInt(process.env.MODELO_CONTRATO_TERMO_ID || '2', 10),
 };

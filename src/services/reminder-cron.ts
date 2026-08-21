@@ -8,6 +8,7 @@ import {
   classStartInstant,
   studioToday,
   addDays,
+  formatHour,
 } from './client-attendances';
 
 /** Prevent overlapping sweeps within this process. */
@@ -19,14 +20,6 @@ function firstNonEmpty(...values: any[]): string {
     if (s) return s;
   }
   return '';
-}
-
-/** "8h" / "15h10" — friendly BR hour. */
-function formatHour(hour: string): string {
-  const [h, m] = hour.split(':');
-  const hh = parseInt(h, 10);
-  const mm = parseInt(m || '0', 10);
-  return mm ? `${hh}h${String(mm).padStart(2, '0')}` : `${hh}h`;
 }
 
 /** "hoje às 8h" / "amanhã às 15h10" / "no dia 25/07 às 9h" (studio local time). */

@@ -13,7 +13,9 @@ import chargesRouter from "./routes/charges";
 import plansRouter from "./routes/plans";
 import nfRouter from "./routes/nf";
 import notificationsRouter from "./routes/notifications";
+import onboardingRouter from "./routes/onboarding";
 import { startReminderCron } from "./services/reminder-cron";
+import { startOnboardingCron } from "./services/onboarding-cron";
 
 const app = express();
 
@@ -41,6 +43,7 @@ app.use("/api/charges", chargesRouter);
 app.use("/api/plans", plansRouter);
 app.use("/api/seufisio", nfRouter);
 app.use("/api/notifications", notificationsRouter);
+app.use("/api/onboarding", onboardingRouter);
 
 // Global error handler
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -52,8 +55,9 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 app.listen(env.PORT, () => {
   console.log(`🚀 MovArt SeuFisio Proxy running on port ${env.PORT}`);
   console.log(`📋 Health check: http://localhost:${env.PORT}/health`);
-  // Start the WhatsApp reminder sweep (no-op if Supabase is not configured).
+  // Start the recurring sweeps (both no-op if Supabase is not configured).
   startReminderCron();
+  startOnboardingCron();
 });
 
 export default app;

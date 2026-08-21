@@ -29,6 +29,15 @@ export function studioToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 }
 
+/** "8h" / "15h10" — friendly BR hour, used in every client-facing message. */
+export function formatHour(hour: string): string {
+  const [h, m] = (hour || '').split(':');
+  const hh = parseInt(h, 10);
+  const mm = parseInt(m || '0', 10);
+  if (isNaN(hh)) return hour || '';
+  return mm ? `${hh}h${String(mm).padStart(2, '0')}` : `${hh}h`;
+}
+
 /** Add N days to a YYYY-MM-DD string, returning YYYY-MM-DD. */
 export function addDays(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
