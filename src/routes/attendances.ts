@@ -52,17 +52,34 @@ async function findTipoIdByName(candidates: string[]): Promise<number> {
   return match.id;
 }
 
-async function resolveCancelledStatusId(): Promise<number> {
-  if (env.CANCELLED_STATUS_ID) return env.CANCELLED_STATUS_ID;
+async function listStatuses(): Promise<any[]> {
   const statuses: any = await seufisioClient.get('/api/status', { rowsPerPage: 'all' });
-  const list: any[] = Array.isArray(statuses) ? statuses : statuses?.data || [];
-  const match = list.find((s: any) => deaccent(s.nome).includes('cancel'));
+  return Array.isArray(statuses) ? statuses : statuses?.data || [];
+}
+
+/**
+ * Resolve the status a cancelled booking should get ("Não Compareceu" at the
+ * studio). Returns the full status object so the PUT can carry a consistent
+ * nested `status` — SeuFisio keeps the old status when the nested object still
+ * points at it, even with a new status_id.
+ */
+async function resolveCancelledStatus(): Promise<{ id: number; status: any | null }> {
+  const list = await listStatuses();
+  if (env.CANCELLED_STATUS_ID) {
+    return {
+      id: env.CANCELLED_STATUS_ID,
+      status: list.find((s: any) => s.id === env.CANCELLED_STATUS_ID) || null,
+    };
+  }
+  const match =
+    list.find((s: any) => deaccent(s.nome).includes('nao compareceu')) ||
+    list.find((s: any) => deaccent(s.nome).includes('cancel'));
   if (!match) {
     throw new Error(
       'Could not resolve a cancelled status. Set the CANCELLED_STATUS_ID env var explicitly.',
     );
   }
-  return match.id;
+  return { id: match.id, status: match };
 }
 
 /**
@@ -95,6 +112,12 @@ function normalizeAttendanceForPut(attendance: Record<string, any>): Record<stri
 
   if (payload.pertence_pacote == null) {
     payload.pertence_pacote = payload.pacote_id || payload.pacote_fixo_id ? 1 : 0;
+  }
+
+  // A nested `status` object pointing at the old status makes SeuFisio keep it
+  // even when status_id changed. Drop it when it disagrees (or is empty).
+  if (payload.status == null || payload.status.id !== payload.status_id) {
+    delete payload.status;
   }
 
   return payload;
@@ -571,8 +594,13 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
     }
 
     // Resolve the cancelled status and PUT the full merged object back.
-    const cancelledStatusId = await resolveCancelledStatusId();
-    const mergedPayload = normalizeAttendanceForPut({ ...attendance, status_id: cancelledStatusId });
+    const cancelled = await resolveCancelledStatus();
+    const cancelledStatusId = cancelled.id;
+    const mergedPayload = normalizeAttendanceForPut({
+      ...attendance,
+      status_id: cancelledStatusId,
+      status: cancelled.status,
+    });
 
     console.log(`[Attendance Cancel] Cancelling ${id} (status_id ${cancelledStatusId}), class in ${hoursUntil.toFixed(1)}h`);
 
