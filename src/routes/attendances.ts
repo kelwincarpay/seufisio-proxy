@@ -66,6 +66,41 @@ async function resolveCancelledStatusId(): Promise<number> {
 }
 
 /**
+ * SeuFisio's PUT /api/atendimento/:id validation is stricter than what its own
+ * GET returns: hora_atendimento / hora_final_atendimento must be H:i (the GET
+ * gives H:i:s), and duracao_atendimento / pertence_pacote are required but
+ * absent from the GET. Normalize a fetched attendance so it can be PUT back.
+ */
+function normalizeAttendanceForPut(attendance: Record<string, any>): Record<string, any> {
+  const toHi = (v: any) => (typeof v === 'string' ? v.slice(0, 5) : v);
+  const payload = { ...attendance };
+
+  payload.hora_atendimento = toHi(payload.hora_atendimento);
+  payload.hora_final_atendimento = toHi(payload.hora_final_atendimento);
+
+  if (payload.duracao_atendimento == null) {
+    const start = payload.hora_atendimento;
+    const end = payload.hora_final_atendimento;
+    let duration: number | null = null;
+    if (typeof start === 'string' && typeof end === 'string') {
+      const [sh, sm] = start.split(':').map(Number);
+      const [eh, em] = end.split(':').map(Number);
+      if ([sh, sm, eh, em].every(Number.isFinite)) {
+        duration = eh * 60 + em - (sh * 60 + sm);
+      }
+    }
+    payload.duracao_atendimento =
+      duration && duration > 0 ? duration : payload.tipo?.periodo_atendimento || 50;
+  }
+
+  if (payload.pertence_pacote == null) {
+    payload.pertence_pacote = payload.pacote_id || payload.pacote_fixo_id ? 1 : 0;
+  }
+
+  return payload;
+}
+
+/**
  * GET /api/attendances?profissional_id=<id>&start=<unix>&end=<unix>
  * List basic attendance events for a professional in a date range
  */
@@ -397,7 +432,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     );
 
     // Step 2: Merge the caller's changes on top of the full object
-    const mergedPayload = { ...currentAttendance, ...changes };
+    const mergedPayload = normalizeAttendanceForPut({ ...currentAttendance, ...changes });
 
     // Step 2.5: If hora_atendimento was changed, auto-recalculate hora_final_atendimento (+50 min)
     if (changes.hora_atendimento) {
@@ -537,7 +572,7 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
 
     // Resolve the cancelled status and PUT the full merged object back.
     const cancelledStatusId = await resolveCancelledStatusId();
-    const mergedPayload = { ...attendance, status_id: cancelledStatusId };
+    const mergedPayload = normalizeAttendanceForPut({ ...attendance, status_id: cancelledStatusId });
 
     console.log(`[Attendance Cancel] Cancelling ${id} (status_id ${cancelledStatusId}), class in ${hoursUntil.toFixed(1)}h`);
 
