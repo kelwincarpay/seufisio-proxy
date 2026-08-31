@@ -66,22 +66,12 @@ export const seufisioClient = {
     });
   },
 
-  /** PUT that returns the full axios response (status, headers, body) for diagnostics. */
-  async putRaw(url: string, data?: any): Promise<AxiosResponse> {
-    const token = await getAccessToken();
-    return client.request({
-      method: 'PUT',
+  async patch<T = any>(url: string, data?: any): Promise<T> {
+    return makeRequest<T>({
+      method: "PATCH",
       url,
       data,
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${token}`,
-        // Browser-like headers: the same PUT from the web app gets a 200 with
-        // the updated object, while ours gets an empty 204 that persists nothing.
-        'user-agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
-        'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-      },
+      headers: { "content-type": "application/json" },
     });
   },
 };

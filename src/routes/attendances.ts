@@ -544,14 +544,30 @@ router.put('/:id', async (req: Request, res: Response) => {
       `[Attendance Update] Full payload: ${JSON.stringify(mergedPayload)}`,
     );
 
-    // Step 3: Send the complete merged object to SeuFisio
-    const data = await seufisioClient.put(
-      `/api/atendimento/${id}`,
-      mergedPayload,
-    );
+    // Status changes only stick via the dedicated endpoint the web app uses;
+    // the full-object PUT answers 204 and silently keeps the old status.
+    const statusChanged =
+      changes.status_id != null && changes.status_id !== currentAttendance.status_id;
+    const onlyStatusChanged =
+      statusChanged && Object.keys(changes).every((k) => k === 'status_id');
+
+    let data: any = null;
+    if (!onlyStatusChanged) {
+      // Step 3: Send the complete merged object to SeuFisio
+      data = await seufisioClient.put(`/api/atendimento/${id}`, mergedPayload);
+    }
+    if (statusChanged) {
+      console.log(
+        `[Attendance Update] Applying status_id ${changes.status_id} via PATCH /api/atendimento/status/${id}`,
+      );
+      const patched = await seufisioClient.patch(`/api/atendimento/status/${id}`, {
+        status_id: changes.status_id,
+      });
+      data = data ?? patched;
+    }
 
     console.log(`[Attendance Update] Success for ${id}`);
-    res.json(data);
+    res.json(data ?? { success: true });
   } catch (error: any) {
     console.error('[Attendance Update] Error:', error?.response?.data || error.message);
     res.status(500).json({
@@ -599,29 +615,18 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
       return;
     }
 
-    // Resolve the cancelled status and PUT the full merged object back.
+    // Status changes go through the dedicated endpoint the web app uses —
+    // the full-object PUT answers 204 and silently keeps the old status.
     const cancelled = await resolveCancelledStatus();
     const cancelledStatusId = cancelled.id;
-    const mergedPayload = normalizeAttendanceForPut({
-      ...attendance,
-      status_id: cancelledStatusId,
-      status: cancelled.status,
-    });
 
     console.log(`[Attendance Cancel] Cancelling ${id} (status_id ${cancelledStatusId}), class in ${hoursUntil.toFixed(1)}h`);
 
-    console.log(
-      `[Attendance Cancel] Payload status fields: status_id=${mergedPayload.status_id}, status=${JSON.stringify(mergedPayload.status ?? null)}`,
-    );
+    const data: any = await seufisioClient.patch(`/api/atendimento/status/${id}`, {
+      status_id: cancelledStatusId,
+    });
 
-    const putResponse = await seufisioClient.putRaw(`/api/atendimento/${id}`, mergedPayload);
-    const data: any = putResponse.data;
-    console.log(
-      `[Attendance Cancel] PUT HTTP ${putResponse.status}, content-type=${putResponse.headers?.['content-type']}, ` +
-        `body (truncated): ${JSON.stringify(data ?? null)?.slice(0, 3000)}`,
-    );
-
-    // SeuFisio has answered 200 while silently keeping the old status before,
+    // SeuFisio has answered 2xx while silently keeping the old status before,
     // so trust only a re-fetch.
     const after: any = await seufisioClient.get(`/api/atendimento/${id}`);
     console.log(`[Attendance Cancel] Post-check: status_id=${after?.status_id}`);
