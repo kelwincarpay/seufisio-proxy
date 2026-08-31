@@ -115,10 +115,16 @@ function normalizeAttendanceForPut(attendance: Record<string, any>): Record<stri
   }
 
   // A nested `status` object pointing at the old status makes SeuFisio keep it
-  // even when status_id changed. Drop it when it disagrees (or is empty).
+  // even with status_id changed. Drop it when it disagrees (or is empty).
   if (payload.status == null || payload.status.id !== payload.status_id) {
     delete payload.status;
   }
+
+  // The web app always sends these on PUT, but the GET never returns them.
+  if (payload.confirmacao == null) payload.confirmacao = 0;
+  if (!('prontuario_formulario' in payload)) payload.prontuario_formulario = null;
+  if (!('prontuario_dados_formulario' in payload)) payload.prontuario_dados_formulario = null;
+  if (!('tipo_prontuario' in payload)) payload.tipo_prontuario = null;
 
   return payload;
 }
@@ -611,6 +617,9 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
     const data: any = await seufisioClient.put(`/api/atendimento/${id}`, mergedPayload);
     console.log(
       `[Attendance Cancel] PUT response: status_id=${data?.status_id}, status=${JSON.stringify(data?.status ?? null)}`,
+    );
+    console.log(
+      `[Attendance Cancel] PUT raw response (truncated): ${JSON.stringify(data ?? null)?.slice(0, 3000)}`,
     );
 
     // SeuFisio has answered 200 while silently keeping the old status before,
