@@ -604,7 +604,28 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
 
     console.log(`[Attendance Cancel] Cancelling ${id} (status_id ${cancelledStatusId}), class in ${hoursUntil.toFixed(1)}h`);
 
-    const data = await seufisioClient.put(`/api/atendimento/${id}`, mergedPayload);
+    console.log(
+      `[Attendance Cancel] Payload status fields: status_id=${mergedPayload.status_id}, status=${JSON.stringify(mergedPayload.status ?? null)}`,
+    );
+
+    const data: any = await seufisioClient.put(`/api/atendimento/${id}`, mergedPayload);
+    console.log(
+      `[Attendance Cancel] PUT response: status_id=${data?.status_id}, status=${JSON.stringify(data?.status ?? null)}`,
+    );
+
+    // SeuFisio has answered 200 while silently keeping the old status before,
+    // so trust only a re-fetch.
+    const after: any = await seufisioClient.get(`/api/atendimento/${id}`);
+    console.log(`[Attendance Cancel] Post-check: status_id=${after?.status_id}`);
+
+    if (after?.status_id !== cancelledStatusId) {
+      res.status(502).json({
+        error: `SeuFisio accepted the update but kept status_id ${after?.status_id} (expected ${cancelledStatusId}). The booking was NOT cancelled.`,
+        status_id: after?.status_id,
+        expected_status_id: cancelledStatusId,
+      });
+      return;
+    }
 
     res.json({
       success: true,
