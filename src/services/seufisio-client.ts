@@ -65,4 +65,18 @@ export const seufisioClient = {
       headers: { "content-type": "application/json" },
     });
   },
+
+  /** PUT that returns the full axios response (status, headers, body) for diagnostics. */
+  async putRaw(url: string, data?: any): Promise<AxiosResponse> {
+    const token = await getAccessToken();
+    return client.request({
+      method: 'PUT',
+      url,
+      data,
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+      },
+    });
+  },
 };

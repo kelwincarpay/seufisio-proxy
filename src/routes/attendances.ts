@@ -614,12 +614,11 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
       `[Attendance Cancel] Payload status fields: status_id=${mergedPayload.status_id}, status=${JSON.stringify(mergedPayload.status ?? null)}`,
     );
 
-    const data: any = await seufisioClient.put(`/api/atendimento/${id}`, mergedPayload);
+    const putResponse = await seufisioClient.putRaw(`/api/atendimento/${id}`, mergedPayload);
+    const data: any = putResponse.data;
     console.log(
-      `[Attendance Cancel] PUT response: status_id=${data?.status_id}, status=${JSON.stringify(data?.status ?? null)}`,
-    );
-    console.log(
-      `[Attendance Cancel] PUT raw response (truncated): ${JSON.stringify(data ?? null)?.slice(0, 3000)}`,
+      `[Attendance Cancel] PUT HTTP ${putResponse.status}, content-type=${putResponse.headers?.['content-type']}, ` +
+        `body (truncated): ${JSON.stringify(data ?? null)?.slice(0, 3000)}`,
     );
 
     // SeuFisio has answered 200 while silently keeping the old status before,
