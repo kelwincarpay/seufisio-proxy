@@ -8,8 +8,14 @@
  *
  *   SEUFISIO_USER=x SEUFISIO_PASSWORD=x SEUFISIO_CLIENT_SECRET=x API_SECRET_TOKEN=x \
  *     npx tsx scripts/check-payloads.ts
+ *
+ * O bloco de tipagem no final (contrato do plano recorrente) só é conferido pelo
+ * compilador, que tsconfig.json não alcança (include: src/**\/*):
+ *
+ *   npx tsc --noEmit -p tsconfig.scripts.json
  */
 import { buildPlanPayload, endMonth, monthlyValue, periodicidadeLabel, resolvePrice, retroactiveSessions, scheduleText } from '../src/services/recurring-plans';
+import type { NormalizedRecurringPlan, RecurringPlanEditInput } from '../src/services/recurring-plans';
 import { discountNote, formatBRL } from '../src/services/charges';
 import { missingRegistrationFields } from '../src/services/contracts';
 import * as msg from '../src/services/onboarding-messages';

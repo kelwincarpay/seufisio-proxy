@@ -8,6 +8,9 @@
  */
 import { seufisioClient } from './seufisio-client';
 import { addDays, formatHour } from './client-attendances';
+// Type-only: slot-assignment imports DAY_NAMES from here, so a value import would
+// close the cycle. The day shapes live there because the assignment rule owns them.
+import type { AssignedDay, DayRequest } from './slot-assignment';
 
 export const DAY_NAMES = [
   'domingo',
@@ -62,6 +65,57 @@ export interface PlanDay {
   hora: string;
   profissional_id: number;
   sala_id: number;
+}
+
+/** One weekly slot as the normalized plan reports it (ADR-0001). */
+export interface NormalizedPlanDay {
+  dia: DayName;
+  hora: string;
+  profissional: { id: number | null; nome: string | null };
+  sala: number | null;
+  /**
+   * The slot exists but has no room left. null on a plain read, where the calendar is
+   * not consulted; a boolean after an edit, which does consult it.
+   */
+  lotado: boolean | null;
+}
+
+/**
+ * The plan as the proxy reports it: mirrors the 201 of POST /api/plans plus the fields
+ * only the edit flow needs (`percentual_desconto`, `dia_vencimento`, `limite_semanal`,
+ * `horarios`).
+ */
+export interface NormalizedRecurringPlan {
+  id: number;
+  cliente_id: number;
+  servico: { id: number; nome: string };
+  dias: NormalizedPlanDay[];
+  valor_mensal: number | null;
+  percentual_desconto: number;
+  dia_vencimento: number;
+  /** Weekly class count read off the service name; null when it cannot be parsed. */
+  limite_semanal: number | null;
+  /** Present only when `limite_semanal` is null, saying the limit was not checked. */
+  aviso?: string;
+  horarios: string;
+  /** The raw upstream `cliente-servico`. Present only with `?raw=1`. */
+  raw?: Record<string, any>;
+}
+
+/**
+ * What a caller may change on a recurring plan. Every field is optional and only the
+ * ones present are applied over the object read upstream; an empty body is a 400,
+ * which the route rejects before reaching the service.
+ */
+export interface RecurringPlanEditInput {
+  /** Day of month the charge falls on, 1-31. */
+  dia_vencimento?: number;
+  /** Replaces the whole weekly schedule when present. */
+  dias?: DayRequest[];
+  tipo_atendimento_id?: number;
+  valor_mensal?: number;
+  /** 0-100. */
+  percentual_desconto?: number;
 }
 
 export interface CreatePlanInput {
@@ -338,3 +392,69 @@ export async function findCycleCharge(
 }
 
 export { DAY_LABEL };
+
+// ---------------------------------------------------------------------------
+// Editing a recurring plan. Signatures only for now (ticket 01 fixes the
+// contract; 02-05 fill these in), so route, service and docs can be written
+// against them in parallel.
+// ---------------------------------------------------------------------------
+
+/** Weekly class count in a service name ("Pilates 2x na Semana" -> 2), or null. */
+export function parseWeeklyLimit(nome: string): number | null {
+  throw new Error('not implemented');
+}
+
+/** The seven-weekday block of a `cliente-servico` (`terca`, `hora_terca`, ...). */
+export function weekdayFields(dias: PlanDay[]): Record<string, any> {
+  throw new Error('not implemented');
+}
+
+/** ISO date -> the `MM/YYYY` the upstream uses for `data_encerramento`. */
+export function toMonthYear(iso: string | null): string {
+  throw new Error('not implemented');
+}
+
+/**
+ * Price to send on an edit. Note the keys are the upstream's (`congelar_valor`), unlike
+ * `ResolvedPrice.congelar` used when creating a plan.
+ */
+export function resolveEditPrice(
+  raw: any,
+  tipoNovo: any | null,
+  valorMensal?: number,
+): { valor_congelado: number | null; congelar_valor: boolean } {
+  throw new Error('not implemented');
+}
+
+/** The full `cliente-servico` object to PUT: the one read upstream with `input` applied. */
+export function buildPlanEditPayload(
+  raw: any,
+  input: RecurringPlanEditInput,
+  dias: PlanDay[] | null,
+  price: { valor_congelado: number | null; congelar_valor: boolean },
+  tipoNovo: any | null,
+): Record<string, any> {
+  throw new Error('not implemented');
+}
+
+/** Upstream `cliente-servico` -> the shape the skill reads. */
+export function normalizeRecurringPlan(
+  raw: any,
+  tipo: any,
+  opts: { assigned?: AssignedDay[]; profissionais?: any[]; includeRaw?: boolean },
+): NormalizedRecurringPlan {
+  throw new Error('not implemented');
+}
+
+/** PUT of the full object to /api/cliente-servico/:id. */
+export async function updateRecurringPlan(
+  planId: number | string,
+  payload: Record<string, any>,
+): Promise<{ success: boolean }> {
+  throw new Error('not implemented');
+}
+
+/** How many weekly classes a requested schedule asks for, to check against the limit. */
+export function countRequestedDays(dias: DayRequest[]): number {
+  throw new Error('not implemented');
+}
