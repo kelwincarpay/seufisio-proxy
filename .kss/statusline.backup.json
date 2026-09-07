@@ -1,0 +1,4 @@
+{
+  "type": "command",
+  "command": "node /Users/macbook/.claude/plugins/cache/kss-skill/kss/0.1.0/scripts/statusline.mjs"
+}

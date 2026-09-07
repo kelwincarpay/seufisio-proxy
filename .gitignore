@@ -8,3 +8,7 @@ dist/
 # capturas de rede (HAR contem tokens)
 capturas/
 *.har
+
+# KSS live state
+.kss/current
+.kss/worktrees/
