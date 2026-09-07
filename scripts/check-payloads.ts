@@ -305,6 +305,18 @@ if (ignoredResult.ok && 'estranho' in (ignoredResult.input as any)) {
   console.log('  FAIL campos desconhecidos: "estranho" vazou para dentro de input');
 }
 
+checkEdit('só chaves desconhecidas', { diaVencimento: 10 }, false);
+
+const salaResult = checkEdit(
+  'sala_id não é aceito',
+  { dias: [{ dia: 'quinta', hora: '09:00', sala_id: 'abc' }] },
+  true,
+);
+if (salaResult.ok && 'sala_id' in ((salaResult.input.dias as any[])[0] as any)) {
+  editFailures++;
+  console.log('  FAIL sala_id não é aceito: "sala_id" vazou para dentro de input.dias[0]');
+}
+
 console.log(editFailures === 0 ? `  ✔ validateEditInput (${editChecks} casos)` : `  ${editFailures} falha(s) em validateEditInput`);
 
 console.log('\n--- upstreamErrorStatus ---');
