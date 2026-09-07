@@ -140,9 +140,14 @@ Corpo vazio (`{}` ou sem body) → `400`.
   - Sem `profissional_id`: cada `dia`/`hora` é validado contra a grade de horários
     disponíveis do serviço; um dia/hora sem slot correspondente é rejeitado com `400`
     antes de qualquer escrita.
-  - Com `profissional_id` informado: esse profissional prevalece e a busca por slot é
-    pulada — o dia é gravado como pedido (`vagas: 0`, `lotado: false`) mesmo que não
-    exista grade nenhuma para aquele profissional/horário; não há `400` nesse caso.
+  - Com `profissional_id` informado: esse profissional prevalece, mas a agenda dele
+    naquele dia/hora ainda é consultada para reportar a capacidade honestamente. Se
+    existir slot, `vagas` vem de `slot.available_spots` e `lotado` é `true` quando o
+    slot está cheio (`!slot.available`); se não existir slot nenhum para aquele
+    profissional/horário, o dia ainda é gravado como pedido (`vagas: 0`,
+    `lotado: false`) e não há `400` por falta de slot. Ainda assim, se o studio tiver
+    mais de uma sala ativa e nenhuma puder ser resolvida automaticamente (`sala_id` não
+    é aceito no body), o PUT falha com `400` e `problemas` (`"sala_id é obrigatório..."`).
 - **Limite semanal**: contagem dos dias pedidos é comparada ao `limite_semanal` do serviço
   (lido do nome, igual ao GET). Se o serviço não tiver `tipo_atendimento_id` novo, usa o
   limite do serviço atual; se `tipo_atendimento_id` for trocado, usa o limite do **novo**
@@ -165,7 +170,8 @@ Corpo vazio (`{}` ou sem body) → `400`.
   Quando resolvido, um slot sem vaga volta com `dias[].lotado: true`, mas a edição já foi
   gravada — `lotado` é só um aviso, não bloqueia a escrita.
 - **`profissional.nome`**: sempre resolvido no PUT (busca a lista de profissionais igual o
-  GET), preferindo o nome vindo da atribuição de vaga quando `dias` foi enviado.
+  GET); prevalece o nome da lista de profissionais e só cai para o nome vindo da
+  atribuição de vaga quando o `profissional_id` do dia não aparece nessa lista.
 - **Sem efeitos colaterais**: a edição não dispara mensagem de WhatsApp nem grava nada em
   Supabase — só o `PUT` upstream do `cliente-servico`.
 - `?raw=1` funciona igual ao GET, anexando o `cliente-servico` upstream em `raw` na
