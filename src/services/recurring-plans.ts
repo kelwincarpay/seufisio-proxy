@@ -264,14 +264,7 @@ export function buildPlanPayload(
 ): Record<string, any> {
   const payload: Record<string, any> = {};
 
-  // Weekly grid: unused days go false / null / "" (empty string on the hour, not null).
-  for (const day of DAY_NAMES) {
-    const match = input.dias.find((d) => d.dia === day);
-    payload[day] = Boolean(match);
-    payload[`sala_id_${day}`] = match ? match.sala_id : null;
-    payload[`profissional_id_${day}`] = match ? match.profissional_id : null;
-    payload[`hora_${day}`] = match ? match.hora : '';
-  }
+  Object.assign(payload, weekdayFields(input.dias));
 
   const dia = String(Number(input.inicio_servico.split('-')[2]));
   // All monthly plans run open-ended at MovArt; only multi-month plans get an end date.
@@ -394,39 +387,92 @@ export async function findCycleCharge(
 export { DAY_LABEL };
 
 // ---------------------------------------------------------------------------
-// Editing a recurring plan. Signatures only for now (ticket 01 fixes the
-// contract; 02-05 fill these in), so route, service and docs can be written
-// against them in parallel.
+// Editing a recurring plan (PUT /api/cliente-servico/:id).
+//
+// The upstream wants the whole object echoed back with only the changed fields
+// touched — same shape as the discount PUT in services/charges.ts. Captured in
+// docs/editar-plano-recorrente.md (HAR of 12/08/2026, plan 125).
 // ---------------------------------------------------------------------------
+
+/** "Pilates 2x na Semana", "PILATES 2X NA SEMANA" — the count is the only stable part. */
+const WEEKLY_LIMIT_RE = /(\d+)x\s*na\s*semana/i;
+
+/** Said in the response when the service name carries no weekly count. */
+const AVISO_SEM_LIMITE =
+  'Limite semanal não pôde ser determinado pelo nome do serviço, então a quantidade de dias não foi conferida.';
 
 /** Weekly class count in a service name ("Pilates 2x na Semana" -> 2), or null. */
 export function parseWeeklyLimit(nome: string): number | null {
-  throw new Error('not implemented');
+  const match = WEEKLY_LIMIT_RE.exec(nome || '');
+  return match ? Number(match[1]) : null;
 }
 
 /** The seven-weekday block of a `cliente-servico` (`terca`, `hora_terca`, ...). */
 export function weekdayFields(dias: PlanDay[]): Record<string, any> {
-  throw new Error('not implemented');
+  const fields: Record<string, any> = {};
+  // Unused days go false / null / "" (empty string on the hour, not null).
+  for (const day of DAY_NAMES) {
+    const match = dias.find((d) => d.dia === day);
+    fields[day] = Boolean(match);
+    fields[`sala_id_${day}`] = match ? match.sala_id : null;
+    fields[`profissional_id_${day}`] = match ? match.profissional_id : null;
+    fields[`hora_${day}`] = match ? match.hora : '';
+  }
+  return fields;
 }
 
 /** ISO date -> the `MM/YYYY` the upstream uses for `data_encerramento`. */
 export function toMonthYear(iso: string | null): string {
-  throw new Error('not implemented');
+  if (!iso) return '';
+  const [year, month] = String(iso).split('-');
+  if (!year || !month) return '';
+  return `${month.padStart(2, '0')}/${year}`;
 }
 
 /**
  * Price to send on an edit. Note the keys are the upstream's (`congelar_valor`), unlike
  * `ResolvedPrice.congelar` used when creating a plan.
+ *
+ * A price given by hand always wins and always freezes. Otherwise a new service means the
+ * creation rule runs again for the plan's own length, and an untouched service keeps the
+ * amount the plan was sold at — a read-only edit must not silently reprice it.
  */
 export function resolveEditPrice(
   raw: any,
   tipoNovo: any | null,
   valorMensal?: number,
 ): { valor_congelado: number | null; congelar_valor: boolean } {
-  throw new Error('not implemented');
+  if (valorMensal != null) {
+    return { valor_congelado: Number(valorMensal), congelar_valor: true };
+  }
+  if (tipoNovo) {
+    const price = resolvePrice(tipoNovo, Number(raw?.periodicidade));
+    // resolvePrice reports "not freezing" as "" (what the create sends); the edit contract
+    // carries null for the same thing.
+    return {
+      valor_congelado: price.valor_congelado === '' ? null : Number(price.valor_congelado),
+      congelar_valor: price.congelar,
+    };
+  }
+  return {
+    valor_congelado: numberOrNull(raw?.valor_congelado),
+    congelar_valor: Boolean(raw?.congelar_valor),
+  };
 }
 
-/** The full `cliente-servico` object to PUT: the one read upstream with `input` applied. */
+function numberOrNull(value: any): number | null {
+  return value == null || value === '' ? null : Number(value);
+}
+
+/**
+ * The full `cliente-servico` object to PUT: the one read upstream with `input` applied.
+ *
+ * Everything not named in `input` is echoed exactly as read, including the fields the
+ * caller may not edit — `dia_padrao_renovacao`, `inicio_servico` and `periodicidade` stay
+ * put, so moving the due day does not move the renewal or the cycle. Two fields come back
+ * from the GET in a read format and have to be rewritten: the end date (ISO -> MM/YYYY)
+ * and the discount (string "0.0000" -> number).
+ */
 export function buildPlanEditPayload(
   raw: any,
   input: RecurringPlanEditInput,
@@ -434,16 +480,89 @@ export function buildPlanEditPayload(
   price: { valor_congelado: number | null; congelar_valor: boolean },
   tipoNovo: any | null,
 ): Record<string, any> {
-  throw new Error('not implemented');
+  const payload: Record<string, any> = { ...raw };
+
+  const encerramento = raw?.data_encerramento;
+  payload.data_encerramento = toMonthYear(encerramento ?? null);
+  // Not in the GET at all; the app derives it from the end date on the way out.
+  payload.possui_data_encerramento = Boolean(encerramento);
+  payload.percentual_desconto = Number(raw?.percentual_desconto) || 0;
+
+  if (input.percentual_desconto != null) {
+    payload.percentual_desconto = Number(input.percentual_desconto);
+  }
+  // The due day, as a day of the month in a string — the renewal day is left alone.
+  if (input.dia_vencimento != null) {
+    payload.dia_padrao_cobranca = String(input.dia_vencimento);
+  }
+  if (dias) {
+    Object.assign(payload, weekdayFields(dias));
+  }
+  if (input.tipo_atendimento_id != null) {
+    payload.tipo_atendimento_id = input.tipo_atendimento_id;
+    if (tipoNovo?.nome) payload.nome_exibicao_tipo_atendimento = tipoNovo.nome;
+  }
+  payload.valor_congelado = price.valor_congelado;
+  payload.congelar_valor = price.congelar_valor;
+
+  return payload;
 }
 
-/** Upstream `cliente-servico` -> the shape the skill reads. */
+/**
+ * Upstream `cliente-servico` -> the shape the skill reads.
+ *
+ * The professional's name is not in the object, only the id: a plain read resolves it
+ * against the professionals list, while an edit takes it from the slot assignment, which
+ * also knows whether the slot is full. Neither is available on a bare call, and then the
+ * name is null rather than guessed.
+ */
 export function normalizeRecurringPlan(
   raw: any,
   tipo: any,
   opts: { assigned?: AssignedDay[]; profissionais?: any[]; includeRaw?: boolean },
 ): NormalizedRecurringPlan {
-  throw new Error('not implemented');
+  const nome = tipo?.nome ?? raw?.nome_exibicao_tipo_atendimento ?? '';
+
+  const dias: NormalizedPlanDay[] = [];
+  for (const day of DAY_NAMES) {
+    if (raw?.[day] !== true) continue;
+    const atribuido = opts.assigned?.find((a) => a.dia === day);
+    const profissionalId = raw[`profissional_id_${day}`] ?? null;
+    const daLista = opts.profissionais?.find(
+      (p: any) => profissionalId != null && Number(p?.id) === Number(profissionalId),
+    );
+    dias.push({
+      dia: day,
+      hora: raw[`hora_${day}`] || '',
+      profissional: { id: profissionalId, nome: daLista?.nome ?? atribuido?.profissional_nome ?? null },
+      sala: raw[`sala_id_${day}`] ?? null,
+      lotado: atribuido ? atribuido.lotado : null,
+    });
+  }
+
+  const limite = parseWeeklyLimit(nome);
+  const plan: NormalizedRecurringPlan = {
+    id: Number(raw?.id),
+    cliente_id: Number(raw?.cliente_id),
+    servico: { id: Number(raw?.tipo_atendimento_id), nome },
+    dias,
+    valor_mensal: numberOrNull(raw?.valor_congelado),
+    percentual_desconto: Number(raw?.percentual_desconto) || 0,
+    dia_vencimento: Number(raw?.dia_padrao_cobranca),
+    limite_semanal: limite,
+    // Same sentence the create flow puts in the WhatsApp copy; the proxy sends nothing.
+    horarios: scheduleText(
+      dias.map((d) => ({
+        dia: d.dia,
+        hora: d.hora,
+        profissional_id: d.profissional.id ?? 0,
+        sala_id: d.sala ?? 0,
+      })),
+    ),
+  };
+  if (limite === null) plan.aviso = AVISO_SEM_LIMITE;
+  if (opts.includeRaw) plan.raw = raw;
+  return plan;
 }
 
 /** PUT of the full object to /api/cliente-servico/:id. */
@@ -451,10 +570,13 @@ export async function updateRecurringPlan(
   planId: number | string,
   payload: Record<string, any>,
 ): Promise<{ success: boolean }> {
-  throw new Error('not implemented');
+  return seufisioClient.put(`/api/cliente-servico/${planId}`, payload);
 }
 
-/** How many weekly classes a requested schedule asks for, to check against the limit. */
+/**
+ * How many weekly classes a requested schedule asks for, to check against the limit.
+ * Two slots on the same weekday are still one class per week in the studio's counting.
+ */
 export function countRequestedDays(dias: DayRequest[]): number {
-  throw new Error('not implemented');
+  return new Set(dias.map((d) => d.dia)).size;
 }
