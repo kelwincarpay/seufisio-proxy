@@ -46,15 +46,19 @@ const DAY_LABELS: Record<string, string> = {
 
 /**
  * Manual validation of a `PUT /recurring/:planId` body. Only the fields present are
- * checked; an empty body (no recognized field) is rejected so the edit always changes
- * something. Unknown keys are silently ignored — they never reach `input`.
+ * checked. Unknown keys are silently ignored — they never reach `input`; a body that
+ * yields no recognized field at all (empty, or only unknown/misspelled keys) is
+ * rejected so the edit always changes something instead of writing back a no-op.
  */
 export function validateEditInput(
   body: any,
 ): { ok: true; input: RecurringPlanEditInput } | { ok: false; error: string } {
-  if (!body || typeof body !== 'object' || Object.keys(body).length === 0) {
-    return { ok: false, error: 'Corpo vazio: informe ao menos um campo para editar' };
-  }
+  const emptyBody = {
+    ok: false as const,
+    error:
+      'Corpo vazio: informe ao menos um campo para editar (dia_vencimento, dias, tipo_atendimento_id, valor_mensal, percentual_desconto)',
+  };
+  if (!body || typeof body !== 'object') return emptyBody;
 
   const input: RecurringPlanEditInput = {};
 
@@ -98,7 +102,8 @@ export function validateEditInput(
         }
         profissionalId = d.profissional_id;
       }
-      parsed.push({ dia: d.dia, hora: d.hora, profissional_id: profissionalId, sala_id: d.sala_id });
+      // sala_id is not part of the edit contract: assignProfessionals picks the room.
+      parsed.push({ dia: d.dia, hora: d.hora, profissional_id: profissionalId });
     }
     input.dias = parsed;
   }
@@ -126,6 +131,8 @@ export function validateEditInput(
     }
     input.percentual_desconto = v;
   }
+
+  if (Object.keys(input).length === 0) return emptyBody;
 
   return { ok: true, input };
 }
