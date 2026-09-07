@@ -72,3 +72,9 @@ Critical path: 01 → 02 → 05
 Elapsed: ~72m   Tokens: ~0.9M (subagents)
 Last: integrate 05
 ```
+
+## Finish
+- Full suite: skipped to CI (`full_suite: ci`) — gates locais tsc / npm run build / check-payloads verdes no ticket 05
+- Remote: `origin` apontava para `kelwinssavoia/seufisio-proxy` (inexistente); corrigido para `kelwincarpay/seufisio-proxy` (mesmo histórico, main ancestral do HEAD)
+- PR: https://github.com/kelwincarpay/seufisio-proxy/pull/1 → main — **not merged** (human decision)
+- `2026-09-07T19:23:31Z` · **—** · finish · PR aberto, artefatos commitados

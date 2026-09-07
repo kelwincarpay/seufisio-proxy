@@ -61,7 +61,7 @@ Rebase conflict: 03 em `scripts/check-payloads.ts` (blocos 02/03), resolvido por
 Full suite: skipped to CI (`full_suite: ci`) · gates locais: tsc, build, check-payloads 43 ✔
 Manual (.env real, plano 125): GET, 400s, 4xx repassado, limite, sem slot ✔ · PUT com sucesso: não verificado (sem plano de teste)
 Deviation: branches de ticket sem prefixo `feat/` (colisão de ref com a feature branch)
-PR: PR_URL_PLACEHOLDER → main · **not merged**
+PR: https://github.com/kelwincarpay/seufisio-proxy/pull/1 → main · **not merged**
 
 ## Review
 —
