@@ -4,21 +4,30 @@ import { isSupabaseConfigured } from '../services/supabase';
 import { applyDiscount } from '../services/charges';
 import { registerOnboarding } from '../services/onboarding';
 import { studioToday } from '../services/client-attendances';
-import { assignProfessionals } from '../services/slot-assignment';
+import { assignProfessionals, AssignedDay, DayRequest } from '../services/slot-assignment';
 import {
   CreatePlanInput,
   DAY_NAMES as RECURRING_DAYS,
+  PlanDay,
+  RecurringPlanEditInput,
+  buildPlanEditPayload,
   buildPlanPayload,
+  countRequestedDays,
   createPlan,
   findCycleCharge,
   getCurrentUserId,
   getPlanSalesRow,
+  getRecurringPlan,
   getTipoAtendimento,
   isValidPeriodicidade,
+  normalizeRecurringPlan,
+  parseWeeklyLimit,
   periodicidadeLabel,
+  resolveEditPrice,
   resolvePrice,
   retroactiveSessions,
   scheduleText,
+  updateRecurringPlan,
   validatePlan,
 } from '../services/recurring-plans';
 
@@ -34,6 +43,99 @@ const DAY_LABELS: Record<string, string> = {
   sexta: 'Sexta',
   sabado: 'Sábado',
 };
+
+/**
+ * Manual validation of a `PUT /recurring/:planId` body. Only the fields present are
+ * checked; an empty body (no recognized field) is rejected so the edit always changes
+ * something. Unknown keys are silently ignored — they never reach `input`.
+ */
+export function validateEditInput(
+  body: any,
+): { ok: true; input: RecurringPlanEditInput } | { ok: false; error: string } {
+  if (!body || typeof body !== 'object' || Object.keys(body).length === 0) {
+    return { ok: false, error: 'Corpo vazio: informe ao menos um campo para editar' };
+  }
+
+  const input: RecurringPlanEditInput = {};
+
+  if (Object.prototype.hasOwnProperty.call(body, 'dia_vencimento')) {
+    const v = body.dia_vencimento;
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > 31) {
+      return {
+        ok: false,
+        error: `Invalid dia_vencimento "${v}". Use an integer between 1 and 31.`,
+      };
+    }
+    input.dia_vencimento = v;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, 'dias')) {
+    const dias = body.dias;
+    if (!Array.isArray(dias) || dias.length === 0) {
+      return {
+        ok: false,
+        error: 'dias must be a non-empty array of { dia, hora, profissional_id? }',
+      };
+    }
+    const parsed: DayRequest[] = [];
+    for (const d of dias) {
+      if (!RECURRING_DAYS.includes(d?.dia)) {
+        return {
+          ok: false,
+          error: `Invalid dia "${d?.dia}". Use one of: ${RECURRING_DAYS.join(', ')}`,
+        };
+      }
+      if (!/^\d{2}:\d{2}$/.test(String(d?.hora || ''))) {
+        return { ok: false, error: `Invalid hora "${d?.hora}" for ${d?.dia}. Use HH:MM.` };
+      }
+      let profissionalId: number | null | undefined;
+      if (Object.prototype.hasOwnProperty.call(d, 'profissional_id')) {
+        if (d.profissional_id !== null && typeof d.profissional_id !== 'number') {
+          return {
+            ok: false,
+            error: `Invalid profissional_id "${d.profissional_id}" for ${d.dia}. Use a number or null.`,
+          };
+        }
+        profissionalId = d.profissional_id;
+      }
+      parsed.push({ dia: d.dia, hora: d.hora, profissional_id: profissionalId, sala_id: d.sala_id });
+    }
+    input.dias = parsed;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, 'tipo_atendimento_id')) {
+    const v = body.tipo_atendimento_id;
+    if (typeof v !== 'number') {
+      return { ok: false, error: `Invalid tipo_atendimento_id "${v}". Use a number.` };
+    }
+    input.tipo_atendimento_id = v;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, 'valor_mensal')) {
+    const v = body.valor_mensal;
+    if (typeof v !== 'number' || v < 0) {
+      return { ok: false, error: `Invalid valor_mensal "${v}". Use a number >= 0.` };
+    }
+    input.valor_mensal = v;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, 'percentual_desconto')) {
+    const v = body.percentual_desconto;
+    if (typeof v !== 'number' || v < 0 || v > 100) {
+      return { ok: false, error: `Invalid percentual_desconto "${v}". Use a number between 0 and 100.` };
+    }
+    input.percentual_desconto = v;
+  }
+
+  return { ok: true, input };
+}
+
+/** Any 4xx from an axios error keeps its status; everything else (5xx, network) is 500. */
+export function upstreamErrorStatus(error: any): number {
+  const status = error?.response?.status;
+  if (typeof status === 'number' && status >= 400 && status <= 499) return status;
+  return 500;
+}
 
 /**
  * POST /api/plans
@@ -289,62 +391,114 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/plans/recurring/:planId?cliente_id=216
- * Read a recurring plan (cliente-servico). The older GET /:planId only reads
- * `pacote` (pacote personalizado), which is a different entity.
- *
- * Sourced from the client's sales list, the only read of a recurring plan we have
- * captured. cliente_id is required because that list is per client.
+ * GET /api/plans/recurring/:planId[?raw=1]
+ * Read a recurring plan (cliente-servico) by its own id — no cliente_id needed. The
+ * older GET /:planId only reads `pacote` (pacote personalizado), which is a different
+ * entity. `?raw=1` adds the raw upstream object to the response.
  */
 router.get('/recurring/:planId', async (req: Request, res: Response) => {
+  const { planId } = req.params;
+  const includeRaw = req.query.raw === '1';
+
   try {
-    const { planId } = req.params;
-    const clienteId = req.query.cliente_id;
+    const raw = await getRecurringPlan(String(planId));
+    const [tipo, profissionais] = await Promise.all([
+      getTipoAtendimento(Number(raw.tipo_atendimento_id)),
+      seufisioClient.get('/api/profissional/todos-profissionais'),
+    ]);
 
-    if (!clienteId) {
-      res.status(400).json({ error: 'Missing required query param: cliente_id' });
-      return;
-    }
-
-    const sales = await seufisioClient.get(`/api/cliente/${clienteId}/listar-vendas`, {
-      tab: 'ativas',
-      page: 1,
-      per_page: 20,
+    const plan = normalizeRecurringPlan(raw, tipo, { profissionais, includeRaw });
+    res.json(plan);
+  } catch (error: any) {
+    console.error('[Plans] Error reading recurring plan:', error?.response?.data || error.message);
+    res.status(upstreamErrorStatus(error)).json({
+      error: 'Failed to read recurring plan',
+      details: error?.response?.data || error.message,
     });
+  }
+});
 
-    const row = (sales?.data || []).find((s: any) => Number(s.id) === Number(planId));
-    if (!row) {
-      res.status(404).json({
-        error: `Recurring plan ${planId} not found among client ${clienteId} active sales`,
+/**
+ * PUT /api/plans/recurring/:planId[?raw=1]
+ * Edit a recurring plan: GET the current `cliente-servico`, apply only the fields the
+ * caller sent, PUT the full object back, then re-GET for the response. Days/hours, if
+ * sent, replace the whole weekly schedule and are checked against the weekly limit of
+ * the (possibly new) service before anything is written.
+ */
+router.put('/recurring/:planId', async (req: Request, res: Response) => {
+  const { planId } = req.params;
+  const includeRaw = req.query.raw === '1';
+
+  const validation = validateEditInput(req.body);
+  if (!validation.ok) {
+    res.status(400).json({ error: validation.error });
+    return;
+  }
+  const input = validation.input;
+
+  try {
+    const raw = await getRecurringPlan(String(planId));
+
+    const tipoAtendimentoIdTrocou =
+      input.tipo_atendimento_id != null &&
+      Number(input.tipo_atendimento_id) !== Number(raw.tipo_atendimento_id);
+    const tipo = await getTipoAtendimento(
+      input.tipo_atendimento_id ?? raw.tipo_atendimento_id,
+    );
+    if (!tipo) {
+      res.status(400).json({
+        error: `tipo_atendimento_id ${input.tipo_atendimento_id ?? raw.tipo_atendimento_id} not found`,
       });
       return;
     }
+    const tipoNovo = tipoAtendimentoIdTrocou ? tipo : null;
 
-    res.json({
-      success: true,
-      plan: {
-        id: row.id,
-        ciclo_id: row.cicloId,
-        tipo_venda: row.tipoVenda,
-        tipo_atendimento: row.tipoAtendimentoNome,
-        tipo_atendimento_id: row.tipoAtendimentoId,
-        periodicidade: row.periodicidade,
-        periodicidade_label:
-          row.periodicidade != null ? periodicidadeLabel(Number(row.periodicidade)) : null,
-        inicio: row.dataInicial,
-        validade: row.validade,
-        valor_mensal: row.valor,
-        horarios: row.informacoes || [],
-        atendimentos_feitos: row.atendimentosFeitos,
-        atendimentos_repor: row.atendimentosRepor,
-        cobranca_automatica: row.cobrancaAutomatica,
-        pausado_em: row.dataPause,
-      },
-    });
+    const limite = parseWeeklyLimit(tipo.nome);
+    if (input.dias && limite !== null) {
+      const pedidos = countRequestedDays(input.dias);
+      if (pedidos > limite) {
+        res.status(400).json({
+          error: `"${tipo.nome}" permite no máximo ${limite} dia(s) por semana; foram pedidos ${pedidos}.`,
+          limite_semanal: limite,
+          dias_pedidos: pedidos,
+          servico: tipo.nome,
+        });
+        return;
+      }
+    }
+
+    let planDays: PlanDay[] | null = null;
+    let assigned: AssignedDay[] | undefined;
+    if (input.dias) {
+      const assignment = await assignProfessionals(input.dias, studioToday());
+      if (assignment.problemas.length > 0) {
+        res.status(400).json({
+          error: 'Não foi possível definir profissional para todos os dias pedidos',
+          problemas: assignment.problemas,
+        });
+        return;
+      }
+      assigned = assignment.dias;
+      planDays = assignment.dias.map((d) => ({
+        dia: d.dia,
+        hora: d.hora,
+        profissional_id: d.profissional_id,
+        sala_id: d.sala_id,
+      }));
+    }
+
+    const price = resolveEditPrice(raw, tipoNovo, input.valor_mensal);
+    const payload = buildPlanEditPayload(raw, input, planDays, price, tipoNovo);
+
+    await updateRecurringPlan(String(planId), payload);
+
+    const raw2 = await getRecurringPlan(String(planId));
+    const plan = normalizeRecurringPlan(raw2, tipo, { assigned, includeRaw });
+    res.json(plan);
   } catch (error: any) {
-    console.error('[Plans] Error reading recurring plan:', error?.response?.data || error.message);
-    res.status(500).json({
-      error: 'Failed to read recurring plan',
+    console.error('[Plans] Error editing recurring plan:', error?.response?.data || error.message);
+    res.status(upstreamErrorStatus(error)).json({
+      error: 'Failed to edit recurring plan',
       details: error?.response?.data || error.message,
     });
   }
