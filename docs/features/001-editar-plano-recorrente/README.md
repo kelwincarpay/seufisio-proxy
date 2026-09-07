@@ -1,8 +1,8 @@
 # 001-editar-plano-recorrente
 
-**State:** tickets · **Size:** M · **Track:** clarify → investigate → spec → plan → tickets → execute → review
+**State:** execute · **Size:** M · **Track:** clarify → investigate → spec → plan → tickets → execute → review
 **Branch:** feat/001-editar-plano-recorrente → main
-**Next:** `/kss-execute 001-editar-plano-recorrente`
+**Next:** `/kss-review 001-editar-plano-recorrente`
 
 > Index only. Cap 4k chars, one block per phase, at most 10 lines each.
 > Detail lives in the phase files; anything longer goes to `notes/` and is linked.
@@ -54,7 +54,14 @@ Not scheduled (DF-): none
 Files: 05-tickets/ · graph.md
 
 ## Execution
-—
+Tickets integrated: 5/5 · turns 219/103 est. (05 rodou 87/10: 2 rejects, ambos doc-vs-código)
+Critical path: 01 → 02 → 05 · merges f30dd9a → 461eeae → 570aecd → cab5033 → 50ce60c
+Escalations: 03 sonnet-high → opus-medium (2 findings de validação); 05 sonnet-low → sonnet-medium → sonnet-high (doc)
+Rebase conflict: 03 em `scripts/check-payloads.ts` (blocos 02/03), resolvido por sonnet-medium e revisado
+Full suite: skipped to CI (`full_suite: ci`) · gates locais: tsc, build, check-payloads 43 ✔
+Manual (.env real, plano 125): GET, 400s, 4xx repassado, limite, sem slot ✔ · PUT com sucesso: não verificado (sem plano de teste)
+Deviation: branches de ticket sem prefixo `feat/` (colisão de ref com a feature branch)
+PR: PR_URL_PLACEHOLDER → main · **not merged**
 
 ## Review
 —
@@ -76,7 +83,13 @@ Files: 05-tickets/ · graph.md
 | grill | 4 | 70 | 1.3k | 140.6k | 4.17M | 30.5k | 4.34M | 22m | 0 | +0/−0 |
 | spec | 2 | 14 | 358 | 80.9k | 819.7k | 11.3k | 912.2k | 10m | 0 | +0/−0 |
 | plan | 12 | 105 | 2.1k | 657.9k | 7.35M | 104.7k | 8.12M | 14m | 0 | +0/−0 |
-| tickets | 2 | 17 | 484 | 96.5k | 1.09M | 9.7k | 1.19M | 2m | 0 | +0/−0 |
-| **Total** | 33 | 314 | 6.5k | 1.53M | 20.00M | 245.5k | 21.78M | 1h14 | 0 | +0/−0 |
+| tickets | 4 | 47 | 1.3k | 247.0k | 3.37M | 66.3k | 3.68M | 49m | 0 | +0/−0 |
+| execute | 98 | 3958 | 94.0k | 9.99M | 412.42M | 3.85M | 426.35M | 45m | 13 | +3887/−91 |
+| 　└ ticket 01 | 11 | 115 | 2.9k | 420.0k | 6.81M | 81.9k | 7.31M | 8m | 3 | +151/−0 |
+| 　└ ticket 02 | 34 | 868 | 21.8k | 2.87M | 67.32M | 984.7k | 71.20M | 19m | 2 | +272/−23 |
+| 　└ ticket 03 | 22 | 996 | 23.3k | 2.42M | 101.57M | 939.8k | 104.95M | 26m | 2 | +280/−48 |
+| 　└ ticket 04 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | — | 3 | +3130/−0 |
+| 　└ ticket 05 | 30 | 1979 | 45.9k | 4.27M | 236.73M | 1.84M | 242.89M | 45m | 3 | +54/−20 |
+| **Total** | 133 | 4302 | 101.3k | 11.67M | 434.70M | 4.15M | 450.62M | 2h45 | 13 | +3887/−91 |
 
 <!-- kss:cost:end -->
