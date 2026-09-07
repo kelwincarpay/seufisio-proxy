@@ -20,6 +20,7 @@ import { discountNote, formatBRL } from '../src/services/charges';
 import { missingRegistrationFields } from '../src/services/contracts';
 import * as msg from '../src/services/onboarding-messages';
 import { nextOccurrence } from '../src/services/slot-assignment';
+import { validateEditInput, upstreamErrorStatus } from '../src/routes/plans';
 
 const tipo8 = { id: 8, nome: 'Pilates 1x na Semana', valor_mensal: 290, valor_trimestral: 600, valor_semestral: 1200 };
 const tipo9 = { id: 9, nome: 'Pilates 2x na Semana', valor_mensal: 465, valor_trimestral: 1005, valor_semestral: 2010 };
@@ -265,7 +266,65 @@ const atribuido = normalizeRecurringPlan(GET_HAR, tipoLido, {
 });
 eq('normalize · nome e lotação via assigned', atribuido.dias[0], { dia: 'quinta', hora: '10:00', profissional: { id: 1, nome: 'Amanda' }, sala: 1, lotado: true });
 
-if (failures + diffs + diffsM > 0) {
-  console.log(`\n${failures + diffs + diffsM} diferença(s) — verificação falhou`);
+// --- 001 · api: validateEditInput / upstreamErrorStatus ---
+console.log('\n--- validateEditInput ---');
+let editChecks = 0;
+let editFailures = 0;
+function checkEdit(label: string, body: any, expectOk: boolean) {
+  editChecks++;
+  const result = validateEditInput(body);
+  const got = result.ok;
+  if (got !== expectOk) {
+    editFailures++;
+    console.log(`  FAIL ${label}: esperado ok:${expectOk}, obtido ok:${got}${!got ? ' (' + (result as any).error + ')' : ''}`);
+  } else {
+    console.log(`  ok   ${label}: ok:${got}${!got ? ' (' + (result as any).error + ')' : ''}`);
+  }
+  return result;
+}
+
+checkEdit('corpo vazio', {}, false);
+
+checkEdit('dia_vencimento 0', { dia_vencimento: 0 }, false);
+checkEdit('dia_vencimento 32', { dia_vencimento: 32 }, false);
+checkEdit('dia_vencimento "15"', { dia_vencimento: '15' }, false);
+checkEdit('dia_vencimento 15', { dia_vencimento: 15 }, true);
+
+checkEdit('hora "9:00"', { dias: [{ dia: 'quinta', hora: '9:00' }] }, false);
+checkEdit('dia "quinta-feira"', { dias: [{ dia: 'quinta-feira', hora: '09:00' }] }, false);
+checkEdit('dia/hora válidos', { dias: [{ dia: 'quinta', hora: '09:00' }] }, true);
+
+checkEdit('tipo_atendimento_id "8"', { tipo_atendimento_id: '8' }, false);
+checkEdit('percentual_desconto 101', { percentual_desconto: 101 }, false);
+checkEdit('valor_mensal -1', { valor_mensal: -1 }, false);
+checkEdit('valor_mensal 300', { valor_mensal: 300 }, true);
+
+const ignoredResult = checkEdit('campos desconhecidos ignorados', { dia_vencimento: 10, estranho: 'x' }, true);
+if (ignoredResult.ok && 'estranho' in (ignoredResult.input as any)) {
+  editFailures++;
+  console.log('  FAIL campos desconhecidos: "estranho" vazou para dentro de input');
+}
+
+console.log(editFailures === 0 ? `  ✔ validateEditInput (${editChecks} casos)` : `  ${editFailures} falha(s) em validateEditInput`);
+
+console.log('\n--- upstreamErrorStatus ---');
+let statusFailures = 0;
+function checkStatus(label: string, error: any, expected: number) {
+  const got = upstreamErrorStatus(error);
+  if (got !== expected) {
+    statusFailures++;
+    console.log(`  FAIL ${label}: esperado ${expected}, obtido ${got}`);
+  } else {
+    console.log(`  ok   ${label}: ${got}`);
+  }
+}
+checkStatus('response.status 404', { response: { status: 404 } }, 404);
+checkStatus('response.status 422', { response: { status: 422 } }, 422);
+checkStatus('response.status 500', { response: { status: 500 } }, 500);
+checkStatus('erro de rede sem response', { message: 'connect ECONNREFUSED' }, 500);
+console.log(statusFailures === 0 ? '  ✔ upstreamErrorStatus' : `  ${statusFailures} falha(s) em upstreamErrorStatus`);
+
+if (failures + diffs + diffsM + editFailures + statusFailures > 0) {
+  console.log(`\n${failures + diffs + diffsM + editFailures + statusFailures} diferença(s) — verificação falhou`);
   process.exitCode = 1;
 }
