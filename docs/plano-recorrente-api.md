@@ -1,0 +1,245 @@
+# Plano recorrente (`cliente-servico`) — leitura e edição
+
+Spec das rotas `/api/plans/recurring/:planId` (GET e PUT), que leem e editam um `serviço
+recorrente` (`cliente-servico`) do SeuFisio. Formato igual ao de `docs/api-specs.md` — uma
+seção por endpoint com Endpoint / Purpose / Request / Business Logic / Success / Error
+Responses — mais uma seção final de Error Reference e "O que mudou" para a skill do
+OpenClaw.
+
+## Índice
+
+1. [GET /api/plans/recurring/:planId](#1-get-apiplansrecurringplanid)
+2. [PUT /api/plans/recurring/:planId](#2-put-apiplansrecurringplanid)
+3. [Error Reference](#3-error-reference)
+4. [O que mudou](#4-o-que-mudou)
+
+---
+
+## 1. GET /api/plans/recurring/:planId
+
+### Endpoint
+
+```
+GET /api/plans/recurring/:planId[?raw=1]
+Authorization: <API_SECRET_TOKEN, como as demais rotas /api>
+```
+
+### Purpose
+
+Lê um plano recorrente (`cliente-servico`) já normalizado no formato que a skill consome:
+serviço, grade semanal, valor, desconto, dia de cobrança e o limite semanal do serviço.
+
+### Request
+
+| Param | Tipo | Obrigatório | Descrição |
+|-------|------|-------------|-----------|
+| `planId` | number | Sim | ID do `cliente-servico` (path) |
+| `raw` | `1` | Não | Quando `1`, inclui o objeto upstream cru em `raw` |
+
+Não aceita mais `?cliente_id=` (ver [O que mudou](#4-o-que-mudou)).
+
+### Business Logic
+
+- Busca o `cliente-servico` upstream por `planId` e o `tipo_atendimento` associado.
+- Monta a grade semanal (`dias`) a partir dos campos de dia/hora/profissional/sala do
+  upstream, um item por dia com slot preenchido.
+- `limite_semanal` vem do nome do serviço (`nome_exibicao_tipo_atendimento` /
+  `tipo_atendimento.nome`), procurando o padrão "Nx na Semana" (case-insensitive). Quando o
+  nome não casa com o padrão, `limite_semanal` é `null` e a resposta inclui `aviso`
+  explicando que o limite não pôde ser lido.
+- Uma leitura simples (sem edição) não consulta a agenda/calendário: `dias[].lotado` vem
+  sempre `null` no GET — só uma edição, que passa pela grade, sabe se o slot está cheio.
+- `?raw=1` anexa o `cliente-servico` upstream sem normalização em `raw`, para depuração.
+
+### Success Response
+
+**HTTP 200** — `NormalizedRecurringPlan`
+
+```jsonc
+{
+  "id": 125,
+  "cliente_id": 322,
+  "servico": { "id": 8, "nome": "Pilates 1x na Semana" },
+  "dias": [
+    {
+      "dia": "quinta",
+      "hora": "10:00",
+      "profissional": { "id": 1, "nome": "Pri S." },
+      "sala": 1,
+      "lotado": null
+    }
+  ],
+  "valor_mensal": 200,
+  "percentual_desconto": 0,
+  "dia_vencimento": 15,
+  "limite_semanal": 1,
+  "horarios": "Quinta às 10:00, com Pri S. na sala Sala 01",
+  "raw": { "...": "só com ?raw=1" }
+}
+```
+
+Quando o nome do serviço não bate com o padrão "Nx na Semana":
+
+```jsonc
+{
+  "...": "...",
+  "limite_semanal": null,
+  "aviso": "Não foi possível ler o limite semanal a partir do nome do serviço."
+}
+```
+
+### Error Responses
+
+| Status | Body | Condição |
+|--------|------|----------|
+| upstream 4xx | `{ "error": "...", "details": "..." }` — mesmo status do upstream | `planId` inexistente ou erro de validação do SeuFisio |
+| `500` | `{ "error": "...", "details": "..." }` | Erro 5xx do upstream ou falha de rede |
+
+---
+
+## 2. PUT /api/plans/recurring/:planId
+
+### Endpoint
+
+```
+PUT /api/plans/recurring/:planId[?raw=1]
+Authorization: <API_SECRET_TOKEN, como as demais rotas /api>
+Content-Type: application/json
+```
+
+### Purpose
+
+Edita um plano recorrente existente: grade semanal, tipo de atendimento, valor mensal,
+percentual de desconto e/ou dia de vencimento. Aplica as mudanças sobre o objeto lido
+upstream e envia o objeto completo de volta (`PUT` full-object, como em `charges.ts`).
+
+### Request
+
+Body — todos os campos são opcionais, mas o corpo não pode vir vazio:
+
+```jsonc
+{
+  "dia_vencimento": 15,               // 1-31
+  "dias": [
+    { "dia": "terca", "hora": "09:00", "profissional_id": 3 }
+    // dia: "segunda".."domingo"; hora: "HH:mm"; profissional_id opcional (null = sem preferência)
+  ],
+  "tipo_atendimento_id": 9,
+  "valor_mensal": 220,
+  "percentual_desconto": 10            // 0-100
+}
+```
+
+Corpo vazio (`{}` ou sem body) → `400`.
+
+### Business Logic
+
+- **Grade (`dias`)**: quando presente, substitui a grade semanal inteira (não é um merge
+  parcial). Cada `dia`/`hora` é validado contra a grade de horários disponíveis do serviço;
+  um dia/hora sem slot correspondente é rejeitado com `400` antes de qualquer escrita.
+  `profissional_id`, quando informado, prevalece sobre o profissional que a grade sugeriria
+  para aquele slot. A "âncora" da grade (a partir de quando os horários são consultados) é
+  sempre hoje.
+- **Limite semanal**: contagem dos dias pedidos é comparada ao `limite_semanal` do serviço
+  (lido do nome, igual ao GET). Se o serviço não tiver `tipo_atendimento_id` novo, usa o
+  limite do serviço atual; se `tipo_atendimento_id` for trocado, usa o limite do **novo**
+  serviço. Excedeu o limite sem uma confirmação explícita → `400` sem gravar nada. Quando o
+  nome do serviço não permite ler o limite (`limite_semanal: null`), a contagem de dias não
+  é validada contra limite nenhum.
+- **Preço**:
+  - `valor_mensal` informado no body → esse valor é gravado congelado (`congelar_valor:
+    true`, `valor_congelado: <valor>`), independentemente do serviço.
+  - `tipo_atendimento_id` trocado sem `valor_mensal` → o preço é recalculado pela mesma
+    regra usada na criação do plano (tabela de preço do novo serviço/periodicidade).
+  - Nem `valor_mensal` nem `tipo_atendimento_id` mudou → mantém o preço lido upstream
+    (`congelar_valor`/`valor_congelado` como estavam).
+- **Dia de vencimento**: `dia_vencimento` grava `dia_padrao_cobranca` no upstream. Nunca
+  mexe em `dia_padrao_renovacao` nem em `data_encerramento` — esses campos são copiados tal
+  como foram lidos, mesmo quando a grade ou o serviço mudam.
+- **Turma cheia (`lotado`)**: depois de gravar, o GET usado para montar a resposta consulta
+  a agenda/calendário; um slot sem vaga volta com `dias[].lotado: true`, mas a edição já foi
+  gravada — `lotado` é só um aviso, não bloqueia a escrita.
+- **Sem efeitos colaterais**: a edição não dispara mensagem de WhatsApp nem grava nada em
+  Supabase — só o `PUT` upstream do `cliente-servico`.
+- `?raw=1` funciona igual ao GET, anexando o `cliente-servico` upstream em `raw` na
+  resposta.
+
+### Success Response
+
+**HTTP 200** — `NormalizedRecurringPlan` (mesmo shape do GET), com a diferença de que
+`dias[].lotado` vem `boolean` (não `null`) porque a edição consultou a agenda:
+
+```jsonc
+{
+  "id": 125,
+  "cliente_id": 322,
+  "servico": { "id": 8, "nome": "Pilates 1x na Semana" },
+  "dias": [
+    {
+      "dia": "terca",
+      "hora": "09:00",
+      "profissional": { "id": 3, "nome": "Ana P." },
+      "sala": 1,
+      "lotado": false
+    }
+  ],
+  "valor_mensal": 220,
+  "percentual_desconto": 10,
+  "dia_vencimento": 15,
+  "limite_semanal": 1,
+  "horarios": "Terça às 09:00, com Ana P. na sala Sala 01"
+}
+```
+
+### Error Responses
+
+| Status | Body | Condição |
+|--------|------|----------|
+| `400` | `{ "error": "..." }` | Corpo vazio, tipo/formato inválido de algum campo |
+| `400` | `{ "error": "...", "problemas": [ ... ] }` | Um ou mais `dia`/`hora` pedidos não existem na grade de horários do serviço |
+| `400` | `{ "error": "...", "limite_semanal": <n>, "dias_pedidos": <n>, "servico": "<nome>" }` | A grade pedida excede o limite semanal do serviço, sem confirmação |
+| upstream 4xx | `{ "error": "...", "details": "..." }` — mesmo status do upstream | Ex.: `planId` inexistente |
+| `500` | `{ "error": "...", "details": "..." }` | Erro 5xx do upstream ou falha de rede |
+
+---
+
+## 3. Error Reference
+
+### HTTP Status Codes
+
+| Code | Meaning |
+|------|---------|
+| `200` | Sucesso |
+| `400` | Erro do cliente — body vazio, formato inválido, dia/hora sem slot na grade, ou limite semanal excedido |
+| upstream 4xx | Repassado com o mesmo status do SeuFisio (ex.: 404 para `planId` inexistente) |
+| `500` | Erro do SeuFisio (5xx) ou falha de rede/exceção não tratada |
+
+### Corpo de erro
+
+Erros repassados do upstream (4xx/5xx) sempre têm o formato:
+
+```json
+{ "error": "<mensagem>", "details": "<corpo ou mensagem crua do upstream>" }
+```
+
+Erros de validação da própria rota (400) variam pelo caso, ver a tabela de cada endpoint
+acima — alguns trazem `problemas`, outros `limite_semanal`/`dias_pedidos`/`servico` para dar
+contexto suficiente pra skill decidir se repete a chamada com uma grade diferente.
+
+---
+
+## 4. O que mudou
+
+Para atualizar a skill do OpenClaw que já conhecia a rota `GET` antiga (`ATUALIZACAO-SKILL-OPENCLAW.md`
+§17 "Get Recurring Plan"):
+
+- **`GET` não aceita mais `?cliente_id=`.** Antes era obrigatório (`cliente_id` era a fonte
+  da lista); agora o plano é lido só por `planId`.
+- **Deixam de existir**: `atendimentos_feitos`, `atendimentos_repor`, `validade`,
+  `pausado_em`. Esses campos não fazem parte da resposta normalizada.
+- **Campos novos**: `percentual_desconto`, `dia_vencimento`, `limite_semanal`, `horarios`
+  (string legível, como antes, mas agora sempre presente) e `dias[].lotado` (indicador de
+  turma cheia, `null` no GET e `boolean` depois de uma edição).
+- **Nova rota de escrita**: `PUT /api/plans/recurring/:planId` — antes não existia edição de
+  plano recorrente pela skill; agora é possível trocar grade, serviço, valor, desconto e
+  dia de vencimento num único request.
