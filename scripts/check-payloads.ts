@@ -21,6 +21,8 @@ import { missingRegistrationFields } from '../src/services/contracts';
 import * as msg from '../src/services/onboarding-messages';
 import { nextOccurrence } from '../src/services/slot-assignment';
 import { validateEditInput, upstreamErrorStatus } from '../src/routes/plans';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 const tipo8 = { id: 8, nome: 'Pilates 1x na Semana', valor_mensal: 290, valor_trimestral: 600, valor_semestral: 1200 };
 const tipo9 = { id: 9, nome: 'Pilates 2x na Semana', valor_mensal: 465, valor_trimestral: 1005, valor_semestral: 2010 };
@@ -265,6 +267,17 @@ const atribuido = normalizeRecurringPlan(GET_HAR, tipoLido, {
   assigned: [{ dia: 'quinta', hora: '10:00', profissional_id: 1, profissional_nome: 'Amanda', sala_id: 1, data_referencia: '2026-09-10', vagas: 0, lotado: true, atribuido_automaticamente: false }],
 });
 eq('normalize · nome e lotação via assigned', atribuido.dias[0], { dia: 'quinta', hora: '10:00', profissional: { id: 1, nome: 'Amanda' }, sala: 1, lotado: true });
+
+// Finding 2 (ticket 05): o PUT sem `dias` não tem `assigned`, então o único jeito de
+// `profissional.nome` sair preenchido no re-GET é o handler também buscar e passar
+// `profissionais` — igual o GET faz. Checagem estática porque o handler não é exportado.
+const routeSource = readFileSync(join(__dirname, '../src/routes/plans.ts'), 'utf8');
+const reGetCall = routeSource.match(/normalizeRecurringPlan\(raw2,\s*tipo,\s*\{([^}]*)\}\)/);
+eq(
+  'PUT recurring/:planId · re-GET passa profissionais para normalizeRecurringPlan',
+  Boolean(reGetCall && /profissionais/.test(reGetCall[1])),
+  true,
+);
 
 // --- 001 · api: validateEditInput / upstreamErrorStatus ---
 console.log('\n--- validateEditInput ---');
