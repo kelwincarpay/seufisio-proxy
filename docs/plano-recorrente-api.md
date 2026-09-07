@@ -73,7 +73,7 @@ Não aceita mais `?cliente_id=` (ver [O que mudou](#4-o-que-mudou)).
   "percentual_desconto": 0,
   "dia_vencimento": 15,
   "limite_semanal": 1,
-  "horarios": "Quinta às 10:00, com Pri S. na sala Sala 01",
+  "horarios": "quinta às 10h",
   "raw": { "...": "só com ?raw=1" }
 }
 ```
@@ -84,7 +84,7 @@ Quando o nome do serviço não bate com o padrão "Nx na Semana":
 {
   "...": "...",
   "limite_semanal": null,
-  "aviso": "Não foi possível ler o limite semanal a partir do nome do serviço."
+  "aviso": "Limite semanal não pôde ser determinado pelo nome do serviço, então a quantidade de dias não foi conferida."
 }
 ```
 
@@ -135,17 +135,20 @@ Corpo vazio (`{}` ou sem body) → `400`.
 ### Business Logic
 
 - **Grade (`dias`)**: quando presente, substitui a grade semanal inteira (não é um merge
-  parcial). Cada `dia`/`hora` é validado contra a grade de horários disponíveis do serviço;
-  um dia/hora sem slot correspondente é rejeitado com `400` antes de qualquer escrita.
-  `profissional_id`, quando informado, prevalece sobre o profissional que a grade sugeriria
-  para aquele slot. A "âncora" da grade (a partir de quando os horários são consultados) é
-  sempre hoje.
+  parcial). A "âncora" da grade (a partir de quando os horários são consultados) é sempre
+  hoje.
+  - Sem `profissional_id`: cada `dia`/`hora` é validado contra a grade de horários
+    disponíveis do serviço; um dia/hora sem slot correspondente é rejeitado com `400`
+    antes de qualquer escrita.
+  - Com `profissional_id` informado: esse profissional prevalece e a busca por slot é
+    pulada — o dia é gravado como pedido (`vagas: 0`, `lotado: false`) mesmo que não
+    exista grade nenhuma para aquele profissional/horário; não há `400` nesse caso.
 - **Limite semanal**: contagem dos dias pedidos é comparada ao `limite_semanal` do serviço
   (lido do nome, igual ao GET). Se o serviço não tiver `tipo_atendimento_id` novo, usa o
   limite do serviço atual; se `tipo_atendimento_id` for trocado, usa o limite do **novo**
-  serviço. Excedeu o limite sem uma confirmação explícita → `400` sem gravar nada. Quando o
-  nome do serviço não permite ler o limite (`limite_semanal: null`), a contagem de dias não
-  é validada contra limite nenhum.
+  serviço. Excedeu o limite → sempre `400` sem gravar nada; não existe confirmação ou
+  override que force a gravação. Quando o nome do serviço não permite ler o limite
+  (`limite_semanal: null`), a contagem de dias não é validada contra limite nenhum.
 - **Preço**:
   - `valor_mensal` informado no body → esse valor é gravado congelado (`congelar_valor:
     true`, `valor_congelado: <valor>`), independentemente do serviço.
@@ -156,9 +159,13 @@ Corpo vazio (`{}` ou sem body) → `400`.
 - **Dia de vencimento**: `dia_vencimento` grava `dia_padrao_cobranca` no upstream. Nunca
   mexe em `dia_padrao_renovacao` nem em `data_encerramento` — esses campos são copiados tal
   como foram lidos, mesmo quando a grade ou o serviço mudam.
-- **Turma cheia (`lotado`)**: depois de gravar, o GET usado para montar a resposta consulta
-  a agenda/calendário; um slot sem vaga volta com `dias[].lotado: true`, mas a edição já foi
+- **Turma cheia (`lotado`)**: só é resolvido para os dias enviados em `dias` naquele PUT —
+  vem da mesma atribuição de profissional/sala que consultou a agenda para montá-los. Um
+  PUT sem `dias` não passa pela agenda, então `dias[].lotado` volta `null`, igual o GET.
+  Quando resolvido, um slot sem vaga volta com `dias[].lotado: true`, mas a edição já foi
   gravada — `lotado` é só um aviso, não bloqueia a escrita.
+- **`profissional.nome`**: sempre resolvido no PUT (busca a lista de profissionais igual o
+  GET), preferindo o nome vindo da atribuição de vaga quando `dias` foi enviado.
 - **Sem efeitos colaterais**: a edição não dispara mensagem de WhatsApp nem grava nada em
   Supabase — só o `PUT` upstream do `cliente-servico`.
 - `?raw=1` funciona igual ao GET, anexando o `cliente-servico` upstream em `raw` na
@@ -166,8 +173,9 @@ Corpo vazio (`{}` ou sem body) → `400`.
 
 ### Success Response
 
-**HTTP 200** — `NormalizedRecurringPlan` (mesmo shape do GET), com a diferença de que
-`dias[].lotado` vem `boolean` (não `null`) porque a edição consultou a agenda:
+**HTTP 200** — `NormalizedRecurringPlan` (mesmo shape do GET). `dias[].lotado` vem
+`boolean` para os dias que vieram em `dias` naquele PUT (a edição consultou a agenda para
+atribuí-los); em um PUT sem `dias`, `lotado` continua `null`, igual o GET:
 
 ```jsonc
 {
@@ -187,7 +195,7 @@ Corpo vazio (`{}` ou sem body) → `400`.
   "percentual_desconto": 10,
   "dia_vencimento": 15,
   "limite_semanal": 1,
-  "horarios": "Terça às 09:00, com Ana P. na sala Sala 01"
+  "horarios": "terça às 9h"
 }
 ```
 
@@ -196,8 +204,8 @@ Corpo vazio (`{}` ou sem body) → `400`.
 | Status | Body | Condição |
 |--------|------|----------|
 | `400` | `{ "error": "..." }` | Corpo vazio, tipo/formato inválido de algum campo |
-| `400` | `{ "error": "...", "problemas": [ ... ] }` | Um ou mais `dia`/`hora` pedidos não existem na grade de horários do serviço |
-| `400` | `{ "error": "...", "limite_semanal": <n>, "dias_pedidos": <n>, "servico": "<nome>" }` | A grade pedida excede o limite semanal do serviço, sem confirmação |
+| `400` | `{ "error": "...", "problemas": [ ... ] }` | Um ou mais `dia`/`hora` pedidos sem `profissional_id` não existem na grade de horários do serviço (com `profissional_id` informado, esse dia é aceito mesmo sem slot — ver Business Logic) |
+| `400` | `{ "error": "...", "limite_semanal": <n>, "dias_pedidos": <n>, "servico": "<nome>" }` | A grade pedida excede o limite semanal do serviço — sempre rejeitado, não existe override |
 | upstream 4xx | `{ "error": "...", "details": "..." }` — mesmo status do upstream | Ex.: `planId` inexistente |
 | `500` | `{ "error": "...", "details": "..." }` | Erro 5xx do upstream ou falha de rede |
 
@@ -239,7 +247,11 @@ Para atualizar a skill do OpenClaw que já conhecia a rota `GET` antiga (`ATUALI
   `pausado_em`. Esses campos não fazem parte da resposta normalizada.
 - **Campos novos**: `percentual_desconto`, `dia_vencimento`, `limite_semanal`, `horarios`
   (string legível, como antes, mas agora sempre presente) e `dias[].lotado` (indicador de
-  turma cheia, `null` no GET e `boolean` depois de uma edição).
+  turma cheia; `null` no GET, e no PUT só é `boolean` para os dias enviados em `dias`
+  naquele request — sem `dias`, continua `null`).
+- **`horarios` passa a ser gerado pelo proxy** (`scheduleText(...)`, a mesma função usada
+  no `POST /api/plans`), não mais o `informacoes` cru do upstream: é uma frase curta tipo
+  "quinta às 10h" ou "terça e quinta às 9h", sem nome de profissional nem sala.
 - **Nova rota de escrita**: `PUT /api/plans/recurring/:planId` — antes não existia edição de
   plano recorrente pela skill; agora é possível trocar grade, serviço, valor, desconto e
   dia de vencimento num único request.
