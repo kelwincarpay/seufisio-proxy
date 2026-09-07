@@ -499,8 +499,11 @@ router.put('/recurring/:planId', async (req: Request, res: Response) => {
 
     await updateRecurringPlan(String(planId), payload);
 
-    const raw2 = await getRecurringPlan(String(planId));
-    const plan = normalizeRecurringPlan(raw2, tipo, { assigned, includeRaw });
+    const [raw2, profissionais] = await Promise.all([
+      getRecurringPlan(String(planId)),
+      seufisioClient.get('/api/profissional/todos-profissionais'),
+    ]);
+    const plan = normalizeRecurringPlan(raw2, tipo, { assigned, profissionais, includeRaw });
     res.json(plan);
   } catch (error: any) {
     console.error('[Plans] Error editing recurring plan:', error?.response?.data || error.message);
