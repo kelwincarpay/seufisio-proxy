@@ -14,7 +14,7 @@
  *
  *   npx tsc --noEmit -p tsconfig.scripts.json
  */
-import { buildPlanPayload, endMonth, monthlyValue, periodicidadeLabel, resolvePrice, retroactiveSessions, scheduleText } from '../src/services/recurring-plans';
+import { buildPlanEditPayload, buildPlanPayload, countRequestedDays, endMonth, monthlyValue, normalizeRecurringPlan, parseWeeklyLimit, periodicidadeLabel, resolveEditPrice, resolvePrice, retroactiveSessions, scheduleText, toMonthYear, weekdayFields } from '../src/services/recurring-plans';
 import type { NormalizedRecurringPlan, RecurringPlanEditInput } from '../src/services/recurring-plans';
 import { discountNote, formatBRL } from '../src/services/charges';
 import { missingRegistrationFields } from '../src/services/contracts';
@@ -142,3 +142,130 @@ const emptyEdit: RecurringPlanEditInput = {};
 console.log('\n--- contract types ---');
 console.log(`plano ${expectedPlan.id}: ${expectedPlan.dias.length} dia(s), limite ${expectedPlan.limite_semanal}, vencimento ${expectedPlan.dia_vencimento}, edicao vazia ${JSON.stringify(emptyEdit)}`);
 console.log('✔ contract types');
+
+// --- 001 · service: edição de plano recorrente ---
+// Fixtures do HAR reqs/editar-plano-cliente.har (plano 125 do cliente 322, "Pilates 1x na
+// Semana" semestral, quinta 10:00 com o profissional 1). GET_HAR é o cliente-servico lido;
+// PUT_HAR é o corpo que o app web enviou ao mudar SÓ o dia de vencimento para 15. Só os
+// corpos entram aqui: o HAR carrega token vivo e é gitignored.
+const GET_HAR = {"id":125,"cliente_id":322,"tipo_atendimento_id":8,"periodicidade":6,"dia_padrao_renovacao":2,"qtd_dias_efetuar_pagamento":null,"inicio_servico":"2026-07-02","domingo":false,"segunda":false,"terca":false,"quarta":false,"quinta":true,"sexta":false,"sabado":false,"hora_domingo":"","hora_segunda":"","hora_terca":"","hora_quarta":"","hora_quinta":"10:00","hora_sexta":"","hora_sabado":"","profissional_id_domingo":null,"profissional_id_segunda":null,"profissional_id_terca":null,"profissional_id_quarta":null,"profissional_id_quinta":1,"profissional_id_sexta":null,"profissional_id_sabado":null,"sala_id_domingo":null,"sala_id_segunda":null,"sala_id_terca":null,"sala_id_quarta":null,"sala_id_quinta":1,"sala_id_sexta":null,"sala_id_sabado":null,"created_at":"2026-07-02T18:41:06.000000Z","updated_at":"2026-08-12T08:16:28.000000Z","data_pause":null,"observacao":"<br />Gerado novo ciclo em 02/07/26 pelo usuário Pri Savoia<br />Gerado novo ciclo em 12/07/26 pelo sistema<br />Gerado novo ciclo em 12/08/26 pelo sistema","created_by_user_id":21714,"possui_dias_fixos":true,"percentual_desconto":"0.0000","data_encerramento":"2027-01-01","forma_pagamento":null,"cobranca_automatica":false,"servico_gratis":false,"cartao_credito_id":null,"stripe_payment_method_id":null,"quantidade_reposicoes_por_ciclo":0,"ignorar_quantidade_reposicoes_por_ciclo":true,"total_atendimentos_ciclo":null,"total_atendimentos_semanais_ciclo":null,"nome_exibicao_tipo_atendimento":"Pilates 1x na Semana","profissional_preferencia_id":null,"congelar_valor":true,"valor_congelado":200,"dia_padrao_cobranca":2,"permitir_justificar_ausencia_app_checkin":true,"emissao_nota_fiscal_automatica":false,"permitir_reposicoes_apos_termino":false,"nome":"Pilates 1x na Semana","count_faturas_vencidas":1,"is_encerrado":false} as Record<string, any>;
+const PUT_HAR = {"id":125,"cliente_id":322,"tipo_atendimento_id":8,"periodicidade":6,"dia_padrao_renovacao":2,"qtd_dias_efetuar_pagamento":null,"inicio_servico":"2026-07-02","domingo":false,"segunda":false,"terca":false,"quarta":false,"quinta":true,"sexta":false,"sabado":false,"hora_domingo":"","hora_segunda":"","hora_terca":"","hora_quarta":"","hora_quinta":"10:00","hora_sexta":"","hora_sabado":"","profissional_id_domingo":null,"profissional_id_segunda":null,"profissional_id_terca":null,"profissional_id_quarta":null,"profissional_id_quinta":1,"profissional_id_sexta":null,"profissional_id_sabado":null,"sala_id_domingo":null,"sala_id_segunda":null,"sala_id_terca":null,"sala_id_quarta":null,"sala_id_quinta":1,"sala_id_sexta":null,"sala_id_sabado":null,"created_at":"2026-07-02T18:41:06.000000Z","updated_at":"2026-08-12T08:16:28.000000Z","data_pause":null,"observacao":"<br />Gerado novo ciclo em 02/07/26 pelo usuário Pri Savoia<br />Gerado novo ciclo em 12/07/26 pelo sistema<br />Gerado novo ciclo em 12/08/26 pelo sistema","created_by_user_id":21714,"possui_dias_fixos":true,"percentual_desconto":0,"data_encerramento":"01/2027","forma_pagamento":null,"cobranca_automatica":false,"servico_gratis":false,"cartao_credito_id":null,"stripe_payment_method_id":null,"quantidade_reposicoes_por_ciclo":0,"ignorar_quantidade_reposicoes_por_ciclo":true,"total_atendimentos_ciclo":null,"total_atendimentos_semanais_ciclo":null,"nome_exibicao_tipo_atendimento":"Pilates 1x na Semana","profissional_preferencia_id":null,"congelar_valor":true,"valor_congelado":200,"dia_padrao_cobranca":"15","permitir_justificar_ausencia_app_checkin":true,"emissao_nota_fiscal_automatica":false,"permitir_reposicoes_apos_termino":false,"nome":"Pilates 1x na Semana","count_faturas_vencidas":1,"is_encerrado":false,"possui_data_encerramento":true} as Record<string, any>;
+
+let failures = 0;
+
+/** Um valor esperado, comparado por JSON. */
+function eq(nome: string, nosso: any, esperado: any): void {
+  const a = JSON.stringify(esperado);
+  const b = JSON.stringify(nosso);
+  if (a === b) { console.log(`  ✔ ${nome}`); return; }
+  console.log(`  DIFF ${nome}: esperado=${a} nosso=${b}`);
+  failures++;
+}
+
+/** Diff chave a chave, como os blocos de criação acima. */
+function eqKeys(nome: string, nosso: Record<string, any>, esperado: Record<string, any>): void {
+  const keys = new Set([...Object.keys(esperado), ...Object.keys(nosso)]);
+  let d = 0;
+  for (const k of keys) {
+    const a = JSON.stringify(esperado[k]);
+    const b = JSON.stringify(nosso[k]);
+    if (a !== b) { console.log(`  DIFF ${nome}.${k}: esperado=${a} nosso=${b}`); d++; }
+  }
+  if (d === 0) console.log(`  ✔ ${nome} (${keys.size} campos)`);
+  failures += d;
+}
+
+console.log('\n--- edição: conversores de formato ---');
+eq('toMonthYear 2027-01-01', toMonthYear('2027-01-01'), '01/2027');
+eq('toMonthYear null', toMonthYear(null), '');
+
+console.log('\n--- edição: limite semanal (FR-03/04) ---');
+eq('Pilates 1x na Semana', parseWeeklyLimit('Pilates 1x na Semana'), 1);
+eq('Pilates 3x na Semana', parseWeeklyLimit('Pilates 3x na Semana'), 3);
+eq('PILATES 2X NA SEMANA', parseWeeklyLimit('PILATES 2X NA SEMANA'), 2);
+eq('Aula Avulsa', parseWeeklyLimit('Aula Avulsa'), null);
+eq('Fisioterapia Sessão', parseWeeklyLimit('Fisioterapia Sessão'), null);
+eq('nome vazio', parseWeeklyLimit(''), null);
+
+console.log('\n--- edição: contagem de dias pedidos (FR-09) ---');
+eq('terça e quinta', countRequestedDays([{ dia: 'terca', hora: '09:00' }, { dia: 'quinta', hora: '10:00' }]), 2);
+eq('terça duas vezes conta 1', countRequestedDays([{ dia: 'terca', hora: '09:00' }, { dia: 'terca', hora: '18:00' }]), 1);
+eq('sem dias', countRequestedDays([]), 0);
+
+console.log('\n--- edição: regra de preço (FR-17/18/19) ---');
+eq('valor_mensal informado', resolveEditPrice(GET_HAR, null, 250), { valor_congelado: 250, congelar_valor: true });
+eq('valor_mensal informado, serviço trocado', resolveEditPrice(GET_HAR, tipo9, 250), { valor_congelado: 250, congelar_valor: true });
+const precoNovo = resolvePrice(tipo9, GET_HAR.periodicidade);
+eq('serviço trocado sem valor (semestral 2010/6)', resolveEditPrice(GET_HAR, tipo9), {
+  valor_congelado: precoNovo.valor_congelado, congelar_valor: precoNovo.congelar,
+});
+eq('serviço trocado sem valor, plano mensal não congela', resolveEditPrice({ ...GET_HAR, periodicidade: 1 }, tipo9), { valor_congelado: null, congelar_valor: false });
+eq('nada mudou ecoa o lido', resolveEditPrice(GET_HAR, null), { valor_congelado: 200, congelar_valor: true });
+
+console.log('\n--- edição: payload do PUT vs captura (FR-07/08) ---');
+const editVenc = buildPlanEditPayload(GET_HAR, { dia_vencimento: 15 }, null, resolveEditPrice(GET_HAR, null), null);
+eqKeys('edit payload · vencimento 15', editVenc, PUT_HAR);
+
+// Corpo vazio: só os três deltas de formato (desconto numérico, MM/YYYY, flag derivada).
+const deltasDeFormato = { percentual_desconto: 0, data_encerramento: '01/2027', possui_data_encerramento: true };
+eqKeys('edit payload · corpo vazio', buildPlanEditPayload(GET_HAR, {}, null, resolveEditPrice(GET_HAR, null), null), { ...GET_HAR, ...deltasDeFormato });
+
+// Proibido sincronizar a renovação com o vencimento, ou mexer no ciclo.
+eq('renovação preservada', editVenc.dia_padrao_renovacao, GET_HAR.dia_padrao_renovacao);
+eq('encerramento preservado (mês)', editVenc.data_encerramento, '01/2027');
+eq('inicio_servico preservado', editVenc.inicio_servico, GET_HAR.inicio_servico);
+eq('periodicidade preservada', editVenc.periodicidade, GET_HAR.periodicidade);
+
+console.log('\n--- edição: grade semanal (FR-14) ---');
+const diasEdit = [
+  { dia: 'terca' as const, hora: '09:00', profissional_id: 1, sala_id: 1 },
+  { dia: 'quinta' as const, hora: '19:00', profissional_id: 3, sala_id: 1 },
+];
+const campos = weekdayFields(diasEdit);
+eq('weekdayFields · 7 dias × 4 campos', Object.keys(campos).length, 28);
+const editDias = buildPlanEditPayload(GET_HAR, { dias: diasEdit }, diasEdit, resolveEditPrice(GET_HAR, null), null);
+eqKeys('edit payload · dias', editDias, { ...GET_HAR, ...deltasDeFormato, ...campos });
+eq('dia em uso · terça', [editDias.terca, editDias.hora_terca, editDias.profissional_id_terca, editDias.sala_id_terca], [true, '09:00', 1, 1]);
+eq('dia sem uso · domingo', [editDias.domingo, editDias.hora_domingo, editDias.profissional_id_domingo, editDias.sala_id_domingo], [false, '', null, null]);
+
+console.log('\n--- edição: desconto e serviço trocado (FR-18/20) ---');
+eq('percentual_desconto gravado numérico', buildPlanEditPayload(GET_HAR, { percentual_desconto: 10 }, null, resolveEditPrice(GET_HAR, null), null).percentual_desconto, 10);
+const editServico = buildPlanEditPayload(GET_HAR, { tipo_atendimento_id: 9 }, null, resolveEditPrice(GET_HAR, tipo9), tipo9);
+eq('serviço trocado', [editServico.tipo_atendimento_id, editServico.nome_exibicao_tipo_atendimento, editServico.valor_congelado, editServico.congelar_valor], [9, 'Pilates 2x na Semana', 335, true]);
+
+console.log('\n--- edição: normalização (FR-01/02/03/04/16/20) ---');
+const tipoLido = { id: 8, nome: 'Pilates 1x na Semana' };
+const normal = normalizeRecurringPlan(GET_HAR, tipoLido, {});
+eqKeys('normalize · plano 125', normal as any, {
+  id: 125,
+  cliente_id: 322,
+  servico: { id: 8, nome: 'Pilates 1x na Semana' },
+  dias: [{ dia: 'quinta', hora: '10:00', profissional: { id: 1, nome: null }, sala: 1, lotado: null }],
+  valor_mensal: 200,
+  percentual_desconto: 0,
+  dia_vencimento: 2,
+  limite_semanal: 1,
+  horarios: scheduleText([{ dia: 'quinta', hora: '10:00', profissional_id: 1, sala_id: 1 }]),
+});
+eq('normalize · sem raw por padrão', 'raw' in normal, false);
+eq('normalize · sem aviso com limite conhecido', 'aviso' in normal, false);
+eq('normalize · includeRaw', normalizeRecurringPlan(GET_HAR, tipoLido, { includeRaw: true }).raw?.id, 125);
+eq('normalize · percentual_desconto', normalizeRecurringPlan({ ...GET_HAR, percentual_desconto: '10.0000' }, tipoLido, {}).percentual_desconto, 10);
+
+const semLimite = normalizeRecurringPlan(GET_HAR, { id: 12, nome: 'Aula Avulsa' }, {});
+eq('normalize · limite indeterminado', semLimite.limite_semanal, null);
+eq('normalize · aviso presente', Boolean(semLimite.aviso), true);
+console.log('  aviso:', semLimite.aviso);
+
+// Nome do profissional: a leitura resolve pela lista de profissionais, a edição pelo que a
+// atribuição de vagas escolheu (que também traz a lotação).
+eq('normalize · nome via profissionais', normalizeRecurringPlan(GET_HAR, tipoLido, { profissionais: [{ id: 1, nome: 'Pri Savoia' }] }).dias[0].profissional, { id: 1, nome: 'Pri Savoia' });
+const atribuido = normalizeRecurringPlan(GET_HAR, tipoLido, {
+  assigned: [{ dia: 'quinta', hora: '10:00', profissional_id: 1, profissional_nome: 'Amanda', sala_id: 1, data_referencia: '2026-09-10', vagas: 0, lotado: true, atribuido_automaticamente: false }],
+});
+eq('normalize · nome e lotação via assigned', atribuido.dias[0], { dia: 'quinta', hora: '10:00', profissional: { id: 1, nome: 'Amanda' }, sala: 1, lotado: true });
+
+if (failures + diffs + diffsM > 0) {
+  console.log(`\n${failures + diffs + diffsM} diferença(s) — verificação falhou`);
+  process.exitCode = 1;
+}
