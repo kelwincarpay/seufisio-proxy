@@ -8,8 +8,14 @@
  *
  *   SEUFISIO_USER=x SEUFISIO_PASSWORD=x SEUFISIO_CLIENT_SECRET=x API_SECRET_TOKEN=x \
  *     npx tsx scripts/check-payloads.ts
+ *
+ * O bloco de tipagem no final (contrato do plano recorrente) só é conferido pelo
+ * compilador, que tsconfig.json não alcança (include: src/**\/*):
+ *
+ *   npx tsc --noEmit -p tsconfig.scripts.json
  */
 import { buildPlanPayload, endMonth, monthlyValue, periodicidadeLabel, resolvePrice, retroactiveSessions, scheduleText } from '../src/services/recurring-plans';
+import type { NormalizedRecurringPlan, RecurringPlanEditInput } from '../src/services/recurring-plans';
 import { discountNote, formatBRL } from '../src/services/charges';
 import { missingRegistrationFields } from '../src/services/contracts';
 import * as msg from '../src/services/onboarding-messages';
@@ -116,3 +122,23 @@ console.log('\n[4a os dois]\n' + msg.signatureReminder({ nome: 'Kelwin', contrac
 console.log('\n[4a só o termo]\n' + msg.signatureReminder({ nome: 'Kelwin', contracts: [contracts[1]] }));
 console.log('\n[4b abriu e parou]\n' + msg.signatureReminder({ nome: 'Kelwin', contracts: [{ ...contracts[1], aberto: true }] }));
 console.log('\n[5]\n' + msg.onboardingComplete({ nome: 'Kelwin' }));
+
+// --- contract: NormalizedRecurringPlan ---
+// Auditoria de tipagem: o objeto abaixo é o plano recorrente 154 do HAR (quinta 10:00,
+// vencimento dia 2, "Pilates 1x na Semana" -> limite_semanal 1) escrito à mão. Só compila
+// quando os tipos do contrato existem em services/recurring-plans.
+const expectedPlan: NormalizedRecurringPlan = {
+  id: 154,
+  cliente_id: 216,
+  servico: { id: 8, nome: 'Pilates 1x na Semana' },
+  dias: [{ dia: 'quinta', hora: '10:00', profissional: { id: null, nome: null }, sala: null, lotado: null }],
+  valor_mensal: 290,
+  percentual_desconto: 0,
+  dia_vencimento: 2,
+  limite_semanal: 1,
+  horarios: 'quinta às 10h',
+};
+const emptyEdit: RecurringPlanEditInput = {};
+console.log('\n--- contract types ---');
+console.log(`plano ${expectedPlan.id}: ${expectedPlan.dias.length} dia(s), limite ${expectedPlan.limite_semanal}, vencimento ${expectedPlan.dia_vencimento}, edicao vazia ${JSON.stringify(emptyEdit)}`);
+console.log('✔ contract types');
